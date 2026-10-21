@@ -530,7 +530,7 @@ class EngineController(context: Context) {
                 "X0X 1.1.0",
                 "Melodee 1.4.3",
                 "FM1 Open V13 Preview",
-                "Skiff 1.3.2",
+                "Skiff 1.4",
                 "FoMni 0.4",
                 "Jangada 1.0.1",
                 "Clipper 1.1 Experimental",

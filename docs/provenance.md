@@ -18,7 +18,7 @@ copyright/license comments and notices are retained.
 | x0x | https://github.com/charlesvestal/fm1-x0x | `27f6fac7e07ce97b5de158b45aec99f59a9e23fd` |
 | melodee | https://github.com/keremimo/melodee | `ba9c812a603607012d68544b1acb6ccc8033eec5` |
 | FM1 Open | https://github.com/m-vave/fm1_open | `b178ac43c25f010c60a878056fb5331fe693fd62` |
-| Skiff | https://github.com/illuminus5/skiff | `c4bb2b4e9015cf6244f98db1d319874e15eb0767` |
+| Skiff | https://github.com/illuminus5/skiff | `c01fa1ed619266d770ea6552b153612e1b77d0a9` |
 | fomni | https://github.com/charlesvestal/fm1-fomni | `6ecd227013cc18def0e89d035b3760eb268b342b` |
 | jangada | https://github.com/zednaked/jangada | `46e6c2c2ed94b609918aa6f5f7381fac915ffc45` |
 

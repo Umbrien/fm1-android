@@ -164,3 +164,41 @@ Validation on the dedicated arm64 API 37 emulator:
 
 Local build logs, receipts and screenshots are retained under ignored
 `Android/build/material-ui/` and `Android/build/material-*.txt`.
+
+## Skiff 1.4 update — 2026-10-21
+
+Skiff now uses the FM-1 v1.4 release, commit
+`c01fa1ed619266d770ea6552b153612e1b77d0a9`. The 610337-byte FM-1 package has
+SHA256 `0622a752e8304777c042ccea0732ba023e1413baa6dbc8724576e2ec76de02e0`,
+matching the upstream release asset digest. Both the package locks and the
+runtime's exact size/hash recognition use this identity; the instrument remains
+kind 7. The version label, compile-time version and bundled attribution are
+updated. All eight generated header fingerprints are unchanged.
+
+Validation on Apple Silicon and the dedicated arm64 API 37 emulator:
+
+- All 88 Rust workspace tests passed, including all 28 shared-runtime tests with
+  every native source enabled and the two interpreter packages supplied. Exact
+  package recognition, public ABI reopen, full flash roundtrip and isolation
+  checks passed. Existing vendored compiler warnings were retained.
+- All 15 Android instrumentation checks passed without external exchange
+  fixtures. Skiff was recognized as native kind 7 with the v1.4 package hash,
+  produced nonzero audio/display output, and passed reset persistence.
+- The standalone Skiff adapter smoke passed: complete 1 MiB flash roundtrip,
+  project reopening, alternating-instance DSP/state isolation and all three
+  user sample slots. The native state is 1650448 bytes.
+- A separately compiled v1.3.2 adapter created a synthetic saved project and
+  flash image. The v1.4 adapter reopened the same 8140-byte project identically
+  and produced nonzero PCM after a note press. This is a bounded compatibility
+  check using synthetic data, not a qualification of every existing project.
+- Upstream FM-1 `bank_test`, `smpmix_test` and `theme_test` passed. These cover
+  REST entries and the last-track song advance fix, sample levels/sends and
+  persistence, and custom palette behavior.
+- The Android APK rebuilt and passed signature/alignment checks; every one of
+  its eleven firmware package assets matches its lock's size and SHA256.
+
+Local evidence is under ignored `target/skiff-1.4-host/`,
+`Research/NativeSkiff/upstream-skiff/build/skiff-1.4-checks/`, and
+`Android/build/skiff-1.4-*`. The adapter retains its existing single-core FM-1
+host mapping; this update does not add SMK-37 hardware, USB/editor or physical
+second-core support, and does not establish hardware parity.

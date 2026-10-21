@@ -14,7 +14,7 @@ No account, telemetry or network permission is required by the app.
 | X0X | 1.1.0 | 4 |
 | Melodee | 1.4.3 | 5 |
 | FM1 Open portable preview | V13 | 6 |
-| Skiff | 1.3.2 | 7 |
+| Skiff | 1.4 | 7 |
 | FoMni | 0.4 | 8 |
 | Jangada | 1.0.1 | 9 |
 | Clipper (experimental) | 1.1-experimental | 10 |

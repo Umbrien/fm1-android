@@ -123,7 +123,16 @@ python Core/native/expansion_prepare.py "$PWD/Research/NativeExpansion"
 ```
 
 Source tags are checked against exact commits; notice/input/resource hashes
-are verified. Existing checkouts are never reset. Release packages require their
+are verified. Existing checkouts are never reset. To advance a clean existing
+Skiff cache from the previous pin to v1.4, fetch and select its pinned commit
+before running preparation (preserve any local source edits first):
+
+```sh
+git -C Research/NativeSkiff/upstream-skiff fetch --depth 1 origin tag v1.4
+git -C Research/NativeSkiff/upstream-skiff switch --detach c01fa1ed619266d770ea6552b153612e1b77d0a9
+```
+
+Release packages require their
 exact size and SHA256. Existing mismatching packages are kept and cause failure.
 Downloaded source and derived resources retain upstream component terms.
 
@@ -139,7 +148,7 @@ Research/NativeFamily/{felucca-1.6.1,x0x-1.1.0,melodee-1.4.3}.fwsc
 Research/NativeOfficial/upstream-fm1-open/
 Research/NativeOfficial/FM1-Open-V13.fwsc
 Research/NativeSkiff/upstream-skiff/
-Research/NativeSkiff/skiff-1.3.2.fwsc
+Research/NativeSkiff/skiff-1.4.fwsc
 Research/NativeExpansion/{fomni,jangada}/
 Research/NativeExpansion/{fomni-0.4,jangada-1.0.1}.fwsc
 ```

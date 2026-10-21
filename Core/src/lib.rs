@@ -728,7 +728,7 @@ mod native_public_abi_tests {
         #[cfg(fm1_native_skiff)]
         {
             let root = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_SKIFF").unwrap());
-            cases.push((7, root.parent().unwrap().join("skiff-1.3.2.fwsc"), RAM));
+            cases.push((7, root.parent().unwrap().join("skiff-1.4.fwsc"), RAM));
         }
         #[cfg(fm1_native_clipper)]
         {

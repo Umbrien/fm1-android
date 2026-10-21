@@ -59,13 +59,13 @@
     {
       "id": "skiff",
       "name": "Skiff",
-      "version": "1.3.2",
-      "source": "https://github.com/illuminus5/skiff/tree/v1.3.2",
-      "url": "https://github.com/illuminus5/skiff/releases/download/v1.3.2/skiff-1.3.2.fwsc",
-      "size": 611605,
-      "sha256": "d77f60a500df772a136358fafba716e8be3d6311dd56430749d5ebb9f476584d",
+      "version": "1.4",
+      "source": "https://github.com/illuminus5/skiff/tree/v1.4",
+      "url": "https://github.com/illuminus5/skiff/releases/download/v1.4/skiff-1.4.fwsc",
+      "size": 610337,
+      "sha256": "0622a752e8304777c042ccea0732ba023e1413baa6dbc8724576e2ec76de02e0",
       "kind": 7,
-      "path": "Research/NativeSkiff/skiff-1.3.2.fwsc"
+      "path": "Research/NativeSkiff/skiff-1.4.fwsc"
     },
     {
       "id": "fomni",

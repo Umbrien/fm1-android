@@ -434,11 +434,11 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
         return Some(jangada::API);
     }
     #[cfg(fm1_native_skiff)]
-    if (len == 0 || len == 611605)
+    if (len == 0 || len == 610337)
         && digest
             == [
-                215, 127, 96, 165, 0, 223, 119, 42, 19, 99, 88, 250, 251, 167, 22, 232, 190, 61,
-                99, 17, 221, 86, 67, 7, 73, 213, 235, 185, 244, 118, 88, 77,
+                6, 34, 167, 82, 232, 48, 71, 119, 192, 66, 204, 234, 7, 50, 186, 2, 62, 20, 19,
+                186, 166, 219, 200, 114, 69, 118, 226, 236, 118, 222, 2, 224,
             ]
     {
         return Some(skiff::API);
@@ -631,7 +631,7 @@ mod tests {
         #[cfg(fm1_native_skiff)]
         {
             let extra = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_SKIFF").unwrap());
-            cases.push((7, extra.parent().unwrap().join("skiff-1.3.2.fwsc")));
+            cases.push((7, extra.parent().unwrap().join("skiff-1.4.fwsc")));
         }
         for (kind, path) in cases {
             let mut package = std::fs::read(path).unwrap();

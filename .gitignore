@@ -33,4 +33,5 @@ local.properties
 
 # Android Gradle state
 .gradle/
+.kotlin/
 Android/app/build/
