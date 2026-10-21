@@ -172,7 +172,8 @@ containing unrelated owner work.
 
 The app must already be built/installed. The script wakes the dedicated emulator
 and dismisses its keyguard before injecting real touch events. Default tests need only the exact
-engine package assets already in the app and exercise ten core/UI cases. The
+engine package assets already in the app and exercise eleven core/UI cases, including
+factory reset persistence for all eight engines. The
 receipt explicitly records that external exchange fixtures were not supplied.
 Optional cross-platform testing uses a caller-provided directory containing
 swift-generated.fm1project, swift-generated.fm1backup and ios-simulator.fm1project:

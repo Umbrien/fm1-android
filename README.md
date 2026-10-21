@@ -98,7 +98,7 @@ adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 
-The SDK-only instrumentation app uses the same local signer. Ten default cases
+The SDK-only instrumentation app uses the same local signer. Eleven default cases
 exercise all engines, SLOOP files/audio, and real Activity input/lifecycle/state.
 The additional iOS exchange case is optional and requires explicit external test
 fixtures through `FM1_EXCHANGE_FIXTURES`; no private export is included. Tests

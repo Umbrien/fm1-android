@@ -399,6 +399,78 @@ class EngineInstrumentation : Instrumentation() {
         require(done.await(10, TimeUnit.SECONDS), "engine worker did not settle")
     }
 
+    private fun firmwareReset(): JSONObject {
+        lateinit var controller: EngineController
+        runOnMainSync {
+            controller = EngineController(targetContext)
+            controller.setPaused(true)
+        }
+        fun onWorker(action: () -> Unit) {
+            val done = CountDownLatch(1)
+            var error: Throwable? = null
+            (field(controller, "worker") as Handler).post {
+                try { action() } catch (e: Throwable) { error = e } finally { done.countDown() }
+            }
+            require(done.await(10, TimeUnit.SECONDS), "reset test worker timed out")
+            error?.let { throw it }
+        }
+        try {
+            barrier(controller)
+            for (kind in EngineController.ENGINE_KINDS) {
+                controller.selectEngine(kind)
+                barrier(controller)
+                require(controller.status.isEmpty(), "load before reset failed: ${controller.status}")
+                var fresh = byteArrayOf()
+                onWorker {
+                    val candidate = NativeEngine.create(asset(kind), kind)
+                    try { fresh = NativeEngine.flash(candidate) }
+                    finally { NativeEngine.destroy(candidate) }
+                    val handle = field(controller, "machine") as Long
+                    val edited = NativeEngine.flash(handle)
+                    edited[edited.lastIndex] = (fresh.last().toInt() xor 0x25).toByte()
+                    require(NativeEngine.restore(handle, edited), "could not seed edited state")
+                }
+                controller.setPaused(true)
+                barrier(controller)
+                val directory = File(targetContext.filesDir, "Instruments")
+                val save = File(directory, "$kind${if (kind == 6) ".preview.flash" else ".flash"}")
+                require(save.readBytes().last() != fresh.last(), "edited state was not saved")
+                val otherStates = directory.listFiles()!!.filter { it != save }
+                    .associate { it.name to ProjectSnapshot.digest(it.readBytes()) }
+                val projectFiles = controller.listProjects().associateWith {
+                    ProjectSnapshot.digest(File(targetContext.filesDir, "Projects/$it").readBytes())
+                }
+                controller.resetFirmware(kind)
+                barrier(controller)
+                require(controller.status.isEmpty(), "reset failed: ${controller.status}")
+                require(save.readBytes().contentEquals(fresh), "reset did not persist factory flash")
+                require(controller.selectedKind == kind && controller.paused, "reset changed host state")
+                for ((name, hash) in otherStates) require(
+                    ProjectSnapshot.digest(File(directory, name).readBytes()) == hash,
+                    "reset changed another firmware",
+                )
+                for ((name, hash) in projectFiles) require(
+                    ProjectSnapshot.digest(File(targetContext.filesDir, "Projects/$name").readBytes()) == hash,
+                    "reset changed a saved project",
+                )
+                controller.selectEngine(kind)
+                barrier(controller)
+                onWorker {
+                    require(
+                        NativeEngine.flash(field(controller, "machine") as Long).last() == fresh.last(),
+                        "reload restored the discarded state",
+                    )
+                }
+            }
+            return JSONObject().put("resetAndReloadKinds", JSONArray(EngineController.ENGINE_KINDS.toList()))
+        } finally {
+            controller.close()
+            val thread = field(controller, "workerThread") as Thread
+            thread.join(10000)
+            require(!thread.isAlive, "reset test controller did not close")
+        }
+    }
+
     private fun delay(ms: Long) = SystemClock.sleep(ms)
 
     private fun held(panel: PanelView, id: Int): Int {
@@ -699,6 +771,7 @@ class EngineInstrumentation : Instrumentation() {
             if (exchangeTests) check("cross-platform-workspace", ::crossPlatform)
         }
         check("activity-multitouch-audio-lifecycle-persistence", ::activity)
+        check("firmware-factory-reset-persistence", ::firmwareReset)
         val result = Bundle()
         try {
             val receipt =

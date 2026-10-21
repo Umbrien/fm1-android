@@ -8,6 +8,9 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ReplacementSpan
 import android.view.*
 import android.widget.*
 import java.io.*
@@ -70,7 +73,8 @@ class MainActivity : Activity(), EngineController.Listener {
         toolbar.gravity = Gravity.CENTER_VERTICAL
         toolbar.setPadding(dp(8f), 0, dp(8f), 0)
         column.addView(toolbar, LinearLayout.LayoutParams(-1, dp(32f)))
-        firmware = chrome("SLOOP 2.7.1 ⌄") { library() }
+        firmware = chrome("") { library() }
+        firmware.setSingleLine(true)
         firmware.gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
         toolbar.addView(firmware, LinearLayout.LayoutParams(0, -1, 1f))
         transport =
@@ -92,6 +96,9 @@ class MainActivity : Activity(), EngineController.Listener {
         val info = chrome("ⓘ") { about() }
         info.contentDescription = "About FM–1"
         toolbar.addView(info, LinearLayout.LayoutParams(dp(44f), -1))
+        val reset = chrome("↻") { confirmFirmwareReset() }
+        reset.contentDescription = "Reset firmware"
+        toolbar.addView(reset, LinearLayout.LayoutParams(dp(44f), -1))
         panel = PanelView(this)
         panel.setMasterIndicator(engine.getMaster())
         column.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -147,7 +154,7 @@ class MainActivity : Activity(), EngineController.Listener {
 
                 override fun onDraw(c: Canvas) {
                     val symbol = text.toString()
-                    if (symbol !in arrayOf("Ⅱ", "▶", "♪", "♩ ×", "●", "ⓘ")) {
+                    if (symbol !in arrayOf("Ⅱ", "▶", "♪", "♩ ×", "●", "ⓘ", "↻")) {
                         super.onDraw(c)
                         return
                     }
@@ -160,6 +167,15 @@ class MainActivity : Activity(), EngineController.Listener {
                     p.strokeJoin = Paint.Join.ROUND
                     p.strokeCap = Paint.Cap.ROUND
                     when (symbol) {
+                        "↻" -> {
+                            c.drawArc(RectF(-7f, -7f, 7f, 7f), -90f, 300f, false, p)
+                            val arrow = Path().apply {
+                                moveTo(-4f, -10f)
+                                lineTo(0f, -7f)
+                                lineTo(-4f, -4f)
+                            }
+                            c.drawPath(arrow, p)
+                        }
                         "Ⅱ" -> {
                             c.drawLine(-3f, -6f, -3f, 6f, p)
                             c.drawLine(3f, -6f, 3f, 6f, p)
@@ -214,7 +230,6 @@ class MainActivity : Activity(), EngineController.Listener {
         b.textSize = 19f
         b.gravity = Gravity.CENTER
         b.setTextColor(accent())
-        if (value.startsWith("SLOOP")) b.setSingleLine(true)
         b.setOnClickListener(click)
         return b
     }
@@ -291,7 +306,37 @@ class MainActivity : Activity(), EngineController.Listener {
             EngineController.ENGINE_KINDS[i] == engine.selectedKind
         )
             index = i
-        firmware.text = EngineController.ENGINE_NAMES[index] + " ⌄"
+        val name = EngineController.ENGINE_NAMES[index]
+        firmware.text = SpannableString("$name \uFFFC").apply {
+            setSpan(object : ReplacementSpan() {
+                override fun getSize(
+                    paint: Paint, text: CharSequence, start: Int, end: Int,
+                    fm: Paint.FontMetricsInt?,
+                ) = dp(12f)
+
+                override fun draw(
+                    canvas: Canvas, text: CharSequence, start: Int, end: Int,
+                    x: Float, top: Int, y: Int, bottom: Int, paint: Paint,
+                ) {
+                    val bounds = Rect()
+                    paint.getTextBounds(name, 0, name.length, bounds)
+                    val centerY = y + bounds.exactCenterY()
+                    val chevronPaint = Paint(paint).apply {
+                        style = Paint.Style.STROKE
+                        strokeWidth = dp(1.4f).toFloat()
+                        strokeCap = Paint.Cap.ROUND
+                        strokeJoin = Paint.Join.ROUND
+                    }
+                    val path = Path().apply {
+                        moveTo(x + dp(2f), centerY - dp(2f))
+                        lineTo(x + dp(6f), centerY + dp(2f))
+                        lineTo(x + dp(10f), centerY - dp(2f))
+                    }
+                    canvas.drawPath(path, chevronPaint)
+                }
+            }, name.length + 1, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        firmware.contentDescription = "$name, select firmware"
         transport.text = if (engine.paused) "▶" else "Ⅱ"
         transport.contentDescription =
             if (engine.paused) "Resume instrument" else "Pause instrument"
@@ -319,6 +364,25 @@ class MainActivity : Activity(), EngineController.Listener {
                 engine.selectEngine(EngineController.ENGINE_KINDS[i])
             }
             .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun confirmFirmwareReset() {
+        val kind = engine.selectedKind
+        val name = EngineController.ENGINE_NAMES[EngineController.ENGINE_KINDS.indexOf(kind)]
+        AlertDialog.Builder(this)
+            .setTitle("Reset $name?")
+            .setMessage(
+                "Restart this firmware from a fresh boot and erase all its current and " +
+                    "autosaved emulator state, including edits, songs, patterns, and samples. " +
+                    "This cannot be undone.\n\n" +
+                    "Saved project files and other firmware states will be kept."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Reset firmware") { _, _ ->
+                panel.releaseTouches()
+                engine.resetFirmware(kind)
+            }
             .show()
     }
 

@@ -213,7 +213,7 @@ class EngineController(context: Context) {
     private fun saveFile(kind: Int) =
         File(directory, "$kind${if (kind == 6) ".preview.flash" else ".flash"}")
 
-    private fun load(kind: Int) {
+    private fun load(kind: Int, reset: Boolean = false) {
         var candidate = 0L
         val wasReady = ready
         ready = false
@@ -221,12 +221,15 @@ class EngineController(context: Context) {
         try {
             candidate = NativeEngine.create(packageBytes(kind), kind)
             val save = saveFile(kind)
-            if (save.isFile && !NativeEngine.restore(candidate, Files.readAllBytes(save.toPath())))
+            if (!reset && save.isFile && !NativeEngine.restore(candidate, Files.readAllBytes(save.toPath())))
                 throw IOException("Saved instrument data could not be restored. It has been kept.")
             NativeEngine.volume(candidate, masterValue)
+            // Commit the fresh state before replacing the running instance. Do not
+            // checkpoint the old instance over it during a reset.
+            if (reset) atomicWrite(save, NativeEngine.flash(candidate))
             if (machine != 0L) {
                 NativeEngine.release(machine)
-                checkpoint()
+                if (!reset) checkpoint()
                 NativeEngine.destroy(machine)
             }
             machine = candidate
@@ -262,6 +265,15 @@ class EngineController(context: Context) {
         if (kind !in 2..9) return
         message("Loading instrument…")
         worker.post { load(kind) }
+    }
+
+    fun resetFirmware(kind: Int) {
+        if (kind !in ENGINE_KINDS) return
+        worker.post {
+            // The confirmation belongs to this firmware, even if another load
+            // was queued while its dialog was visible.
+            if (selectedKind == kind) load(kind, reset = true)
+        }
     }
 
     fun key(id: Int, down: Boolean) {
