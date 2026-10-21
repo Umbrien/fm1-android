@@ -1,5 +1,49 @@
 //! Exact package/source pins select separate compiled firmware implementations.
 use super::native_sloop::Api;
+#[cfg(fm1_native_clipper)]
+mod clipper {
+    use super::Api;
+    extern "C" {
+        fn clp_state_size() -> u64;
+        fn clp_state_init(state: *mut u8) -> i32;
+        fn clp_bind(state: *mut u8);
+        fn clp_init();
+        fn clp_ctl() -> u32;
+        fn clp_rate() -> u32;
+        fn clp_render(out: *mut i32, frames: u32);
+        fn clp_draw(out: *mut u16);
+        fn clp_physical_key(id: u32, down: i32);
+        fn clp_release_all();
+        fn clp_physical_encoder(id: u32, delta: i32);
+        fn clp_physical_leds(out: *mut f32);
+        fn clp_volume(value: u32);
+        fn clp_flash_load(bytes: *const u8);
+        fn clp_flash_copy(bytes: *mut u8);
+        fn clp_workload_metrics(out: *mut u64, capacity: u32) -> u32;
+    }
+    pub const API: Api = Api {
+        kind: 10,
+        flash_size: 1048576,
+        alignment: 16,
+        state_size: clp_state_size,
+        state_init: clp_state_init,
+        bind: clp_bind,
+        init: clp_init,
+        ctl: clp_ctl,
+        rate: clp_rate,
+        render: clp_render,
+        draw: clp_draw,
+        key: clp_physical_key,
+        release_all: clp_release_all,
+        encoder: clp_physical_encoder,
+        leds: clp_physical_leds,
+        volume: clp_volume,
+        flash_load: clp_flash_load,
+        flash_copy: clp_flash_copy,
+        metrics: clp_workload_metrics,
+        destroy: None,
+    };
+}
 #[cfg(fm1_native_family)]
 mod felucca {
     use super::Api;
@@ -317,11 +361,21 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
     if (len == 0 || len == 610035)
         && digest
             == [
-                124, 157, 38, 157, 21, 209, 193, 164, 142, 14, 186, 218, 127, 250, 44, 42, 161,
-                150, 193, 157, 81, 5, 111, 211, 247, 96, 211, 34, 50, 43, 51, 95,
+                251, 105, 180, 49, 23, 144, 235, 126, 192, 148, 152, 190, 22, 174, 43, 113, 189,
+                104, 24, 64, 226, 33, 192, 216, 207, 219, 38, 251, 95, 154, 41, 40,
             ]
     {
         return Some(super::native_sloop::SLOOP);
+    }
+    #[cfg(fm1_native_clipper)]
+    if (len == 0 || len == 610055)
+        && digest
+            == [
+                58, 35, 163, 124, 67, 28, 129, 59, 205, 249, 115, 33, 244, 151, 34, 199, 50, 141,
+                31, 145, 52, 186, 70, 159, 243, 186, 25, 74, 217, 240, 82, 6,
+            ]
+    {
+        return Some(clipper::API);
     }
     #[cfg(fm1_native_family)]
     if (len == 0 || len == 610090)
@@ -407,6 +461,8 @@ mod tests {
             8 => fomni::API,
             #[cfg(fm1_native_expansion)]
             9 => jangada::API,
+            #[cfg(fm1_native_clipper)]
+            10 => clipper::API,
             _ => panic!("kind"),
         }
     }
@@ -416,6 +472,8 @@ mod tests {
         kinds.push(7);
         #[cfg(fm1_native_expansion)]
         kinds.extend([8, 9]);
+        #[cfg(fm1_native_clipper)]
+        kinds.push(10);
         kinds
     }
     fn run(m: &mut Native, frames: usize) -> Vec<f32> {

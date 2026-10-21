@@ -15,7 +15,8 @@ NATIVE = ROOT / 'Core/native'
 def main():
     argparse.ArgumentParser(description=__doc__).parse_args()
     commands = [
-        ('prepare.py', 'Research/NativeSloop/upstream-sloop-2.7.1'),
+        ('prepare.py', 'Research/NativeSloop/upstream-sloop-2.8'),
+        ('clipper_prepare.py', 'Research/NativeClipper/upstream-clipper'),
         ('prepare_family.py', 'Research/NativeFamily'),
         ('official_preview_prepare.py', 'Research/NativeOfficial/upstream-fm1-open'),
         ('skiff_prepare.py', 'Research/NativeSkiff/upstream-skiff'),

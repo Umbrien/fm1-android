@@ -113,7 +113,8 @@ This explicit command executes the following existing source preparers, then
 fetches package records from Core/native/packages.lock.json:
 
 ```sh
-python Core/native/prepare.py "$PWD/Research/NativeSloop/upstream-sloop-2.7.1"
+python Core/native/prepare.py "$PWD/Research/NativeSloop/upstream-sloop-2.8"
+python Core/native/clipper_prepare.py "$PWD/Research/NativeClipper/upstream-clipper"
 python Core/native/prepare_family.py "$PWD/Research/NativeFamily"
 python Core/native/official_preview_prepare.py "$PWD/Research/NativeOfficial/upstream-fm1-open"
 python Core/native/skiff_prepare.py "$PWD/Research/NativeSkiff/upstream-skiff"
@@ -128,7 +129,10 @@ Downloaded source and derived resources retain upstream component terms.
 The ignored cache layout is:
 
 ```text
-Research/NativeSloop/upstream-sloop-2.7.1/
+Research/NativeSloop/upstream-sloop-2.8/
+Research/NativeClipper/{upstream-clipper,clipper-1.1-experimental.fwsc}
+Research/Stock/FM-1_015.fwsc
+Research/FM1VA/FM-1+VA-102.fwsc
 Research/NativeFamily/{felucca,x0x,melodee}/
 Research/NativeFamily/{felucca-1.6.1,x0x-1.1.0,melodee-1.4.3}.fwsc
 Research/NativeOfficial/upstream-fm1-open/
@@ -150,7 +154,7 @@ path or symlink belongs in Git. The source/notice/resource checks still apply.
 adb install -r Android/build/FM1-android-arm64.apk
 ```
 
-The --core option prepares the Rust static archive and all eight native engines.
+The --core option prepares the Rust static archive and all nine native engines.
 Later Kotlin/JNI-only iterations may omit --core to reuse that archive. APK assets
 are checked against packages.lock.json before packaging. Native ELF segments
 use 16 KiB alignment. This is an arm64-only APK with minSdk 26 and targetSdk 35.
@@ -172,8 +176,8 @@ containing unrelated owner work.
 
 The app must already be built/installed. The script wakes the dedicated emulator
 and dismisses its keyguard before injecting real touch events. Default tests need only the exact
-engine package assets already in the app and exercise eleven core/UI cases, including
-factory reset persistence for all eight engines. The
+engine package assets already in the app and exercise fourteen core/UI cases, including
+factory reset persistence for all eleven firmware entries. The
 receipt explicitly records that external exchange fixtures were not supplied.
 Optional cross-platform testing uses a caller-provided directory containing
 swift-generated.fm1project, swift-generated.fm1backup and ios-simulator.fm1project:
@@ -187,7 +191,7 @@ The test package shares the app's local signer and uses standard Android SDK
 Instrumentation. The script exits nonzero if its final JSON receipt is absent
 or reports failures.
 
-Host Rust regression may also be run with all five FM1_NATIVE_* environment
+Host Rust regression may also be run with all six FM1_NATIVE_* environment
 variables from Android/build.sh pointing at the prepared cache:
 
 ```sh
@@ -195,4 +199,11 @@ cargo test --workspace --release
 ```
 
 Without those environment variables, native-only test cases are conditional and
-are not evidence for eight-engine compatibility.
+are not evidence for nine-native-engine compatibility.
+
+Set `FM1_STOCK_PACKAGE="$PWD/Research/Stock/FM-1_015.fwsc"` for the host
+stock V15 boot/sound/flash test. Stock runs in the interpreter, with no JIT.
+
+Set `FM1_VA_PACKAGE="$PWD/Research/FM1VA/FM-1+VA-102.fwsc"` for the
+FM-1+VA host interpreter boot/sound/flash test. Its exact package is fetched by
+`scripts/prepare.py`; the app does not download it at runtime.

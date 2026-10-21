@@ -1,9 +1,9 @@
-Native SLOOP 2.7.1 backend (local prototype)
+Native SLOOP 2.8 backend (local prototype)
 
 SLOOP / Felucca firmware: GPL-3.0-only. Copyright 2026 Leo Kuroshita
 (@kurogedelic), Hugelton Instruments; SLOOP by isod89 and contributors.
 Exact source: https://github.com/isod89/sloop-fm1
-Tag v2.7.1, commit 4ec1ac829fd2bdf2c571ea215fb3d62477d01220.
+Tag v2.8, commit b77bf55e3bf804665b8f5dffb5955bd8443311f0.
 
 Native firmware wrapper and per-instance LLVM state tooling derived from
 Virtual FM-1, GPL-3.0: https://github.com/jbschooley/Virtual-FM-1

@@ -462,7 +462,7 @@ class MainActivity : Activity(), EngineController.Listener {
         AlertDialog.Builder(this)
             .setTitle("FM–1")
             .setMessage(
-                "Unofficial native FM–1 instrument. Eight source-compiled engines.\n\nPlay the 27 keys; drag knobs vertically. Hold function buttons for firmware combinations. Tap the display to enlarge it. MASTER controls the instrument; the speaker control mutes the output.\n\nProjects and samples stay on this device unless you explicitly export them. No account or telemetry. Backgrounding pauses audio.\n\nGPL-3.0-only. Includes fm1-emu (MIT) and source-native engines by their respective authors. Not affiliated with M-VAVE. Portable FM1 Open preview may differ from hardware and does not include the original factory sound bank."
+                "Unofficial native FM–1 instrument. Nine source-compiled engines plus emulated M-VAVE Stock V15 and FM-1+VA 102.\n\nPlay the 27 keys; drag knobs vertically. Hold function buttons for firmware combinations. Tap the display to enlarge it. MASTER controls the instrument; the speaker control mutes the output.\n\nProjects and samples stay on this device unless you explicitly export them. No account or telemetry. Backgrounding pauses audio.\n\nGPL-3.0-only. Includes fm1-emu (MIT) and source-native engines by their respective authors. Not affiliated with M-VAVE. Stock V15 and FM-1+VA emulation are experimental and may run below real time. Portable FM1 Open preview may differ from hardware and does not include the original factory sound bank."
             )
             .setNeutralButton("Credits and licenses") { _, _ -> licenses() }
             .setPositiveButton("Done", null)

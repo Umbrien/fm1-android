@@ -10,6 +10,7 @@ import org.json.JSONObject
 
 /** Compatible musical workspace envelope. Projects omit personal global settings. */
 internal class ProjectSnapshot {
+    var packageSHA256 = PACKAGE
     var master = 716
     val parts = linkedMapOf<String, ByteArray>()
 
@@ -37,6 +38,7 @@ internal class ProjectSnapshot {
 
     fun copy() =
         ProjectSnapshot().also { copy ->
+            copy.packageSHA256 = packageSHA256
             copy.master = master
             parts.forEach { (name, data) -> copy.parts[name] = data.clone() }
         }
@@ -81,7 +83,7 @@ internal class ProjectSnapshot {
         val body =
             JSONObject()
                 .put("version", 1)
-                .put("packageSHA256", PACKAGE)
+                .put("packageSHA256", packageSHA256)
                 .put("master", snapshot.master)
                 .put("parts", array)
         return JSONObject()
@@ -129,7 +131,8 @@ internal class ProjectSnapshot {
     }
 
     companion object {
-        const val PACKAGE = "7c9d269d15d1c1a48e0ebada7ffa2c2aa196c19d51056fd3f760d322322b335f"
+        private const val LEGACY_PACKAGE = "7c9d269d15d1c1a48e0ebada7ffa2c2aa196c19d51056fd3f760d322322b335f"
+        const val PACKAGE = "fb69b4311790eb7ec09498be16ae2b71bd681840e221c0d8cfdb26fb5f9a2928"
 
         fun digest(bytes: ByteArray) =
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
@@ -137,7 +140,7 @@ internal class ProjectSnapshot {
             }
 
         fun capture(machine: Long, master: Int): ProjectSnapshot {
-            if (NativeEngine.kind(machine) != 2) throw IOException("SLOOP 2.7.1 is required.")
+            if (NativeEngine.kind(machine) != 2) throw IOException("SLOOP 2.8 is required.")
             return ProjectSnapshot().also { snapshot ->
                 snapshot.master = master
                 snapshot.parts["flash"] = NativeEngine.flash(machine)
@@ -174,9 +177,10 @@ internal class ProjectSnapshot {
             )
                 throw IOException("The file type does not match its project or backup contents.")
             val snapshot = root.getJSONObject("snapshot")
-            if (snapshot.getInt("version") != 1 || snapshot.getString("packageSHA256") != PACKAGE)
-                throw IOException("This workspace needs the exact SLOOP 2.7.1 release.")
+            if (snapshot.getInt("version") != 1 || snapshot.getString("packageSHA256") !in setOf(PACKAGE, LEGACY_PACKAGE))
+                throw IOException("This workspace needs the exact SLOOP 2.8 release.")
             return ProjectSnapshot().also { result ->
+                result.packageSHA256 = snapshot.getString("packageSHA256")
                 result.master = snapshot.getInt("master")
                 val array = snapshot.getJSONArray("parts")
                 if (array.length() != 18) throw IOException("Incomplete workspace components.")

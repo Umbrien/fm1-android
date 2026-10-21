@@ -1,4 +1,4 @@
-//! Shared instance-based C ABI. Android admits exact compiled-native packages.
+//! Shared instance-based C ABI. Android admits exact pinned firmware packages.
 //! The host serializes all calls per instance.
 //! CPU and peripheral implementation: Joakim Eriksson, MIT (Vendor/LICENSE-fm1-emu).
 use fm1_core::{Bus, Cpu};
@@ -10,6 +10,48 @@ use std::{
 mod project_io;
 const RAM: usize = 1 << 20;
 const MAX_PACKAGE: usize = 4 << 20;
+// Stock V15 runs the original PI32v2 package in the interpreter, with no JIT.
+const STOCK_SIZE: usize = 699956;
+const STOCK_SHA256: [u8; 32] = [
+    219, 22, 66, 178, 182, 250, 92, 44, 204, 177, 31, 253, 19, 135, 128, 104, 187, 40, 96, 22, 120,
+    211, 100, 64, 73, 249, 157, 196, 14, 126, 219, 138,
+];
+const FM1VA_SIZE: usize = 859700;
+const FM1VA_SHA256: [u8; 32] = [
+    123, 22, 154, 105, 179, 5, 112, 88, 29, 14, 188, 123, 68, 133, 30, 62, 8, 137, 141, 41, 86,
+    173, 225, 85, 54, 59, 207, 24, 250, 197, 195, 72,
+];
+fn interpreted_kind(bytes: &[u8]) -> u32 {
+    let expected = match bytes.len() {
+        STOCK_SIZE => (STOCK_SHA256, 11),
+        FM1VA_SIZE => (FM1VA_SHA256, 12),
+        _ => return 0,
+    };
+    if sha256::digest(bytes) == expected.0 {
+        expected.1
+    } else {
+        0
+    }
+}
+/// Exact catalogue identity, including the stock interpreter entry.
+#[no_mangle]
+pub unsafe extern "C" fn instrument_kind_for_fwsc(data: *const u8, len: usize) -> u32 {
+    if data.is_null() || !(960..=MAX_PACKAGE).contains(&len) {
+        return 0;
+    }
+    let kind = interpreted_kind(std::slice::from_raw_parts(data, len));
+    if kind != 0 {
+        return kind;
+    }
+    instrument_native_kind_for_fwsc(data, len)
+}
+#[no_mangle]
+pub unsafe extern "C" fn instrument_kind(m: *const Instrument) -> u32 {
+    if let Some(Instrument::Interpreter(m)) = m.as_ref() {
+        return m.kind;
+    }
+    instrument_native_kind(m)
+}
 struct Interpreter {
     cpu: Cpu,
     cpu1: Option<Cpu>,
@@ -17,6 +59,7 @@ struct Interpreter {
     tick: bool,
     audio: VecDeque<i16>,
     halted: bool,
+    kind: u32,
 }
 impl Interpreter {
     /// Offline profiling tool output; contains firmware-derived decoded instructions.
@@ -36,7 +79,7 @@ impl Interpreter {
         soc.periph.hz = 240_000_000;
         soc.periph.skip_idle = true;
         let mut cpu = Cpu::new(fw.entry);
-        cpu.jit_on = false; // No executable-memory/JIT entitlement on iOS.
+        cpu.jit_on = false; // Interpreter-only firmware: no executable-memory/JIT dependency.
         cpu.user = true;
         let params = 0x01c0_0000 + 0x7fc00;
         soc.write32(params, params + 0x40);
@@ -49,6 +92,7 @@ impl Interpreter {
             tick: false,
             audio: VecDeque::new(),
             halted: false,
+            kind: interpreted_kind(bytes),
         })
     }
     fn render(&mut self, out: &mut [f32], budget: u32) -> usize {
@@ -93,6 +137,7 @@ impl Interpreter {
     fm1_native_family,
     fm1_native_official_preview,
     fm1_native_expansion,
+    fm1_native_clipper,
     fm1_native_skiff
 ))]
 mod native_family;
@@ -101,17 +146,10 @@ mod native_family;
     fm1_native_family,
     fm1_native_official_preview,
     fm1_native_expansion,
+    fm1_native_clipper,
     fm1_native_skiff
 ))]
 mod native_sloop;
-#[cfg(any(
-    fm1_native_sloop,
-    fm1_native_family,
-    fm1_native_official_preview,
-    fm1_native_expansion,
-    fm1_native_skiff,
-    test
-))]
 mod sha256;
 #[allow(private_interfaces)]
 pub enum Instrument {
@@ -121,6 +159,7 @@ pub enum Instrument {
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     Native(native_sloop::Native),
@@ -132,6 +171,7 @@ impl Instrument {
             fm1_native_family,
             fm1_native_official_preview,
             fm1_native_expansion,
+            fm1_native_clipper,
             fm1_native_skiff
         ))]
         if std::env::var_os("FM1_FORCE_INTERPRETER").is_none() {
@@ -156,6 +196,7 @@ impl Instrument {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
+                fm1_native_clipper,
                 fm1_native_skiff
             ))]
             Self::Native(_) => String::new(),
@@ -169,6 +210,7 @@ impl Instrument {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
+                fm1_native_clipper,
                 fm1_native_skiff
             ))]
             Self::Native(m) => m.render(out),
@@ -193,6 +235,7 @@ pub unsafe extern "C" fn instrument_backend(m: *const Instrument) -> u32 {
             fm1_native_family,
             fm1_native_official_preview,
             fm1_native_expansion,
+            fm1_native_clipper,
             fm1_native_skiff
         ))]
         Some(Instrument::Native(_)) => 2,
@@ -210,6 +253,7 @@ pub unsafe extern "C" fn instrument_native_kind_for_fwsc(data: *const u8, len: u
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     if let Some(api) = native_family::for_package(std::slice::from_raw_parts(data, len)) {
@@ -246,6 +290,7 @@ pub unsafe extern "C" fn instrument_native_kind_for_sha256(data: *const u8, len:
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     if let Some(api) = native_family::for_digest(digest, 0) {
@@ -260,6 +305,7 @@ pub unsafe extern "C" fn instrument_native_kind(m: *const Instrument) -> u32 {
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     if let Some(Instrument::Native(m)) = m.as_ref() {
@@ -282,12 +328,18 @@ pub unsafe extern "C" fn instrument_workload_metrics(
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     if let Some(Instrument::Native(m)) = m.as_mut() {
         return m.metrics(out, capacity.min(16));
     }
     0
+}
+/// Interpreter execution failure, distinct from a bounded render returning no frames during boot.
+#[no_mangle]
+pub unsafe extern "C" fn instrument_halted(m: *const Instrument) -> bool {
+    matches!(m.as_ref(), Some(Instrument::Interpreter(m)) if m.halted)
 }
 /// Borrowed package bytes. Returns an owned instance or null, with a readable error.
 #[no_mangle]
@@ -355,6 +407,7 @@ pub unsafe extern "C" fn instrument_key(m: *mut Instrument, id: u32, down: bool)
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
+                fm1_native_clipper,
                 fm1_native_skiff
             ))]
             Instrument::Native(m) => m.key(id, down),
@@ -376,6 +429,7 @@ pub unsafe extern "C" fn instrument_release_all(m: *mut Instrument) {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
+                fm1_native_clipper,
                 fm1_native_skiff
             ))]
             Instrument::Native(m) => m.release_all(),
@@ -399,6 +453,7 @@ pub unsafe extern "C" fn instrument_encoder(m: *mut Instrument, id: u32, delta: 
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
+                fm1_native_clipper,
                 fm1_native_skiff
             ))]
             Instrument::Native(m) => m.encoder(id, delta),
@@ -418,6 +473,7 @@ pub unsafe extern "C" fn instrument_volume(m: *mut Instrument, value: u32) {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
+                fm1_native_clipper,
                 fm1_native_skiff
             ))]
             Instrument::Native(m) => m.volume(value),
@@ -438,6 +494,7 @@ pub unsafe extern "C" fn instrument_snapshot(
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     if let Instrument::Native(m) = m {
@@ -475,6 +532,7 @@ pub unsafe extern "C" fn instrument_flash(m: *mut Instrument, out: *mut u8, len:
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     if let Instrument::Native(m) = m {
@@ -508,6 +566,7 @@ pub unsafe extern "C" fn instrument_restore(
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
+        fm1_native_clipper,
         fm1_native_skiff
     ))]
     if let Instrument::Native(m) = m {
@@ -648,7 +707,7 @@ mod native_public_abi_tests {
         let official =
             std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_OFFICIAL_PREVIEW").unwrap());
         let mut cases = vec![
-            (2, sloop.join("docs/firmware/sloop-2.7.1.fwsc"), RAM),
+            (2, sloop.join("docs/firmware/sloop-2.8.fwsc"), RAM),
             (3, family.join("felucca-1.6.1.fwsc"), RAM),
             (4, family.join("x0x-1.1.0.fwsc"), RAM),
             (5, family.join("melodee-1.4.3.fwsc"), RAM),
@@ -670,6 +729,15 @@ mod native_public_abi_tests {
         {
             let root = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_SKIFF").unwrap());
             cases.push((7, root.parent().unwrap().join("skiff-1.3.2.fwsc"), RAM));
+        }
+        #[cfg(fm1_native_clipper)]
+        {
+            let root = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_CLIPPER").unwrap());
+            cases.push((
+                10,
+                root.parent().unwrap().join("clipper-1.1-experimental.fwsc"),
+                RAM,
+            ));
         }
         for (kind, path, expected_size) in cases {
             let bytes = std::fs::read(path).unwrap();
@@ -720,6 +788,81 @@ mod native_public_abi_tests {
                 instrument_key(reopened, 21, false);
                 instrument_destroy(reopened);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod stock_tests {
+    use super::*;
+    #[test]
+    fn stock_v15_exact_identity_boot_sound_and_flash() {
+        check_interpreted_package("FM1_STOCK_PACKAGE", 11);
+    }
+    #[test]
+    fn fm1va_102_exact_identity_boot_sound_and_flash() {
+        check_interpreted_package("FM1_VA_PACKAGE", 12);
+    }
+    fn check_interpreted_package(variable: &str, kind: u32) {
+        let Some(path) = std::env::var_os(variable) else {
+            return;
+        };
+        let bytes = std::fs::read(path).unwrap();
+        unsafe {
+            assert_eq!(instrument_kind_for_fwsc(bytes.as_ptr(), bytes.len()), kind);
+            assert_eq!(
+                instrument_native_kind_for_fwsc(bytes.as_ptr(), bytes.len()),
+                0
+            );
+            let mut altered = bytes.clone();
+            altered[1000] ^= 1;
+            assert_eq!(instrument_kind_for_fwsc(altered.as_ptr(), altered.len()), 0);
+            let mut error = [0; 512];
+            let m = instrument_create(bytes.as_ptr(), bytes.len(), error.as_mut_ptr(), error.len());
+            assert!(!m.is_null(), "{}", String::from_utf8_lossy(&error));
+            assert_eq!(instrument_backend(m), 1);
+            assert_eq!(instrument_kind(m), kind);
+            let start = std::time::Instant::now();
+            let mut audio = [0.; 1024];
+            let mut frames = 0;
+            for _ in 0..200 {
+                frames += instrument_render(m, audio.as_mut_ptr(), 512);
+            }
+            let mut pixels = vec![0; 57600];
+            let mut leds = [0.; 41];
+            assert_ne!(
+                instrument_snapshot(m, pixels.as_mut_ptr(), leds.as_mut_ptr()),
+                0
+            );
+            assert!(
+                pixels.iter().filter(|p| **p != pixels[0]).count() > 20,
+                "blank stock LCD"
+            );
+            instrument_key(m, 21, true);
+            let mut nonzero = 0;
+            for _ in 0..100 {
+                frames += instrument_render(m, audio.as_mut_ptr(), 512);
+                assert!(audio.iter().all(|v| v.is_finite()));
+                nonzero += audio.iter().filter(|v| **v != 0.).count();
+            }
+            instrument_release_all(m);
+            assert!(nonzero > 100, "silent stock note");
+            let mut saved = vec![0; RAM];
+            assert_eq!(instrument_flash(m, saved.as_mut_ptr(), RAM), RAM);
+            let reopened =
+                instrument_create(bytes.as_ptr(), bytes.len(), error.as_mut_ptr(), error.len());
+            assert!(!reopened.is_null());
+            assert!(!instrument_restore(reopened, saved.as_ptr(), RAM - 1));
+            assert!(instrument_restore(reopened, saved.as_ptr(), RAM));
+            let mut check = vec![0; RAM];
+            instrument_flash(reopened, check.as_mut_ptr(), RAM);
+            assert_eq!(saved, check);
+            eprintln!(
+                "interpreted kind {kind}: {frames} frames, {nonzero} nonzero samples, {:?} host elapsed",
+                start.elapsed()
+            );
+            instrument_destroy(reopened);
+            instrument_destroy(m);
         }
     }
 }

@@ -1,0 +1,21 @@
+FM-1+VA Version 102 (FM-1_102), by baud girl / Madeline, Baud Girl.
+Copyright Baud Girl, 2026.
+
+Official project: https://baudgirl.com/work/FM-1+VA
+Official installer: https://baudgirl.com/work/FM-1+VA/install
+Official package: https://baudgirl.com/fm1/firmware/FM-1+VA-102.fwsc
+Release date: 2026-10-19. Package size: 859700 bytes.
+SHA256: 7b169a69b30570581d0ebc7b44851e3e08898d2956ade155363bcf18fac5c348
+The hash matches the publisher's installer metadata inspected 2026-10-21.
+
+The original package is downloaded into an ignored developer cache, checked
+without modification, and executed by the MIT fm1-emu PI32v2 interpreter.
+It is not source-compiled and is not the FM1 Open portable preview.
+No FM-1+VA source code or preset pack is included in this repository.
+
+The inspected official release/installer pages provide the firmware for free
+installation; they do not specify a firmware redistribution license. This
+notice records attribution and provenance, and grants no additional rights.
+The host's GPL-3.0-only license and the interpreter's MIT license do not
+relicense FM-1+VA or the author's optional preset packs. Retain the author's
+applicable terms when distributing a binary that includes the package.

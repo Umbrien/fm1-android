@@ -1,15 +1,15 @@
 # FM-1 for Android
 
 An unofficial offline FM-1 synthesizer app for Android 8.0+ (API 26), arm64.
-Eight pinned source-compiled instruments share a native Kotlin multitouch panel with
-six finishes, fixed-size knobs, keyboard illumination and a collapsible header.
+Nine pinned source-compiled instruments plus stock V15 and FM-1+VA 102
+share a native Kotlin multitouch panel with six finishes, fixed-size knobs, keyboard illumination and a collapsible header.
 No account, telemetry or network permission is required by the app.
 
 ![FM-1 Android panel](docs/screenshot.png)
 
-| Instrument | Exact release | Native kind |
+| Instrument | Exact release | Engine ID |
 | --- | --- | --- |
-| SLOOP | 2.7.1 | 2 |
+| SLOOP | 2.8 | 2 |
 | Felucca | 1.6.1 | 3 |
 | X0X | 1.1.0 | 4 |
 | Melodee | 1.4.3 | 5 |
@@ -17,11 +17,15 @@ No account, telemetry or network permission is required by the app.
 | Skiff | 1.3.2 | 7 |
 | FoMni | 0.4 | 8 |
 | Jangada | 1.0.1 | 9 |
+| Clipper (experimental) | 1.1-experimental | 10 |
+| M-VAVE Stock (emulated) | V15 | 11 (interpreter) |
+| FM-1+VA (emulated) | 102 | 12 (interpreter) |
 
-Only exact packages matching the linked native registry are admitted by the
+Only exact packages matching the pinned firmware catalogue are admitted by the
 Android bridge. There is no arbitrary firmware loader, runtime source compiler
-or JIT in the consumer flow. Shared Rust code retains the attributed reference
-emulator, but unsupported packages cannot enter that route through the app.
+or JIT in the consumer flow. Stock V15 and FM-1+VA run their original packages in the attributed PI32v2 interpreter without JIT.
+Each has separate saves and remains experimental; real-time playback is not guaranteed.
+Unsupported packages cannot enter that route through the app.
 FM1 Open uses its portable source preview, may differ from hardware, and lacks
 the original factory sound bank.
 
@@ -40,8 +44,9 @@ Changing the app ID installs a separate app alongside an earlier installation;
 it does not automatically adopt that app's private data or remove it. To move
 SLOOP work, export project copies or complete workspace backups from the earlier
 app, then import them with Projects and files in this app. Other instruments'
-private autosaves are not automatically transferred. The project/backup schema
-and exact firmware identities are unchanged.
+private autosaves are not automatically transferred. The project/backup schema is unchanged. SLOOP 2.7.1 workspace imports are
+validated by a disposable 2.8 candidate before replacing current work; new exports
+identify SLOOP 2.8. Older apps may reject these newer exports.
 
 ## Build
 
@@ -98,7 +103,7 @@ adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 
-The SDK-only instrumentation app uses the same local signer. Eleven default cases
+The SDK-only instrumentation app uses the same local signer. Fourteen default cases
 exercise all engines, SLOOP files/audio, and real Activity input/lifecycle/state.
 The additional iOS exchange case is optional and requires explicit external test
 fixtures through `FM1_EXCHANGE_FIXTURES`; no private export is included. Tests
@@ -132,3 +137,7 @@ Individual firmware resources and components retain their own terms. See
 [NOTICE](NOTICE), [provenance](docs/provenance.md), `licenses/`,
 `Core/native/licenses/` and the public source locks. Full bundled notices are
 available inside the app through About → Credits and licenses.
+
+FM-1+VA uses Baud Girl’s exact Version 102 package. Its optional preset packs
+are not bundled; use EDIT → Erase Preset to initialize an FM, VA or 8-Bit sound.
+See the [official manual](https://baudgirl.com/work/FM-1%2BVA/manual/102).

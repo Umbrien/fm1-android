@@ -1,0 +1,21 @@
+{
+  "source": "https://github.com/isod89/clipper-fm1",
+  "tag": "v1.1-experimental",
+  "commit": "e69067211c4690f34e494b5b896e4585163dcc2b",
+  "generated_headers_sha256": {
+    "felucca_drumkits.h": "3d6d07b4c47330aaa7dad53f187495aa4d46575ade0f8d0003404c6b125d63a0",
+    "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
+    "felucca_font.h": "dbd1c88574994c7dab11cef1a6240f365ce305befe0373201a24f805ec2def34",
+    "felucca_icons.h": "a38710d0e8bacaa53528e95687d44da69d6e24134d6f2ee92ace02df6559d567",
+    "felucca_samples.h": "4c5603f803489cd06df178fd7d12680dfc8b459e26a7c1df208ced48aab71bfa",
+    "felucca_tables.h": "28f7783cd74c6d9e6dbcd21913030e199ffa8ba5f5a24689da406c2c51bc40b1",
+    "felucca_wavetables.h": "85ff0de843c6b0f2f1863ffd1090b3093374e829a562cc82f126387d29a92758",
+    "sloop_logo.h": "4c1ab2da7d0305cbedd89c33ed45bc1cd8edcf7b96ad23378721593310651581"
+  },
+  "notices_sha256": {
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "LICENSING.md": "a0ecbe4da87af97f3b7a084233e327ee6104bfa17c17e3602c53f74f57c0ccbd",
+    "LICENSES/Apache-2.0-msfa.txt": "27dd23b62bc11d0806562397a1e782f86fc7dcacd1ba7a1b58d3c78a54795e62",
+    "assets/fonts/Terminus-LICENSE.txt": "0a18785a674c0061da0fa1eb1bbdfe2d7db383b3f2e64c73454540e9cc3ae33d"
+  }
+}

@@ -12,7 +12,8 @@ copyright/license comments and notices are retained.
 
 | Native source | Public repository | Exact commit |
 | --- | --- | --- |
-| SLOOP | https://github.com/isod89/sloop-fm1 | `4ec1ac829fd2bdf2c571ea215fb3d62477d01220` |
+| SLOOP | https://github.com/isod89/sloop-fm1 | `b77bf55e3bf804665b8f5dffb5955bd8443311f0` |
+| Clipper | https://github.com/isod89/clipper-fm1 | `e69067211c4690f34e494b5b896e4585163dcc2b` |
 | felucca | https://github.com/hugelton/Felucca | `a53ecf428c29c780108fd70a31b71a32a6b5c313` |
 | x0x | https://github.com/charlesvestal/fm1-x0x | `27f6fac7e07ce97b5de158b45aec99f59a9e23fd` |
 | melodee | https://github.com/keremimo/melodee | `ba9c812a603607012d68544b1acb6ccc8033eec5` |
@@ -29,7 +30,7 @@ it is distinct from excluded firmware-derived generated code.
 
 The FM1 Open adapter builds the public portable preview source, excluding board
 hardware drivers and the proprietary sdk/lib/libfm1_engine.a. Its independent
-logical store is 536576 bytes; the other seven engines own 1 MiB stores.
+logical store is 536576 bytes; the other ten catalogue entries own 1 MiB stores.
 
 The Android icon at Android/app/src/main/res/drawable/icon.png is a 192×192 resize
 of an existing generated original app icon. The original design study used the
@@ -40,3 +41,20 @@ packaged as the icon. No generation prompt is included.
 The README screenshot is the actual Android native panel in synthetic test
 state on an emulator. It contains no owner project, personal saved data or
 private recording. Engine LCD and UI graphics retain their upstream attribution.
+
+M-VAVE Stock V15 uses the unmodified 699956-byte recovery package from
+`m-vave/fm1_open` commit `4c7496daac04a95ff10d1afdcc8f9ead2dbabc41`,
+`sdk/firmware/FM-1_015.fwsc`. SHA256 is
+`db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a`.
+The publisher identifies the recovery resource as Apache-2.0; its complete
+component notice is bundled in `licenses/NOTICE-stock-v15`. It executes through
+the reference interpreter, separately from all source-native engines.
+
+FM-1+VA Version 102 is the original binary published by baud girl / Madeline
+at https://baudgirl.com/work/FM-1+VA/install (2026-10-19). The 859700-byte
+package SHA256 `7b169a69b30570581d0ebc7b44851e3e08898d2956ade155363bcf18fac5c348`
+matches that installer’s published metadata. It is interpreted as kind 12,
+with separate 1 MiB flash. No FM-1+VA source or optional preset pack is vendored.
+The inspected official pages do not specify firmware redistribution terms;
+`licenses/NOTICE-fm1va` retains attribution without treating the host’s license
+as a license grant for that firmware.

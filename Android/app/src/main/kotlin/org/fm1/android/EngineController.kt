@@ -74,22 +74,22 @@ class EngineController(context: Context) {
                     if (running()) {
                         val need = synchronized(ringLock) { 1024 - available }
                         if (need >= 512) {
-                            if (NativeEngine.render(machine, renderBuffer, 512) != 512)
-                                throw IOException(
-                                    "The native instrument did not return complete audio."
-                                )
-                            for (value in renderBuffer) {
+                            val frames = NativeEngine.render(machine, renderBuffer, 512)
+                            if (frames !in 0..512 || (selectedKind < 11 && frames != 512))
+                                throw IOException("The instrument did not return complete audio.")
+                            for (i in 0 until frames * 2) {
+                                val value = renderBuffer[i]
                                 if (!value.isFinite())
                                     throw IOException("The instrument returned invalid audio.")
                                 peak = maxOf(peak, abs(value.toDouble()))
                             }
                             synchronized(ringLock) {
-                                for (i in 0 until 1024) ring[(write * 2 + i) % ring.size] =
+                                for (i in 0 until frames * 2) ring[(write * 2 + i) % ring.size] =
                                     renderBuffer[i]
-                                write = (write + 512) % 8192
-                                available += 512
+                                write = (write + frames) % 8192
+                                available += frames
                             }
-                            producedFrames += 512
+                            producedFrames += frames
                         }
                         val now = SystemClock.uptimeMillis()
                         if (now - lastSnapshot >= 33) {
@@ -111,7 +111,7 @@ class EngineController(context: Context) {
         }
 
     init {
-        selectedKind = prefs.getInt("instrument", 2).takeIf { it in 2..9 } ?: 2
+        selectedKind = prefs.getInt("instrument", 2).takeIf { it in ENGINE_KINDS } ?: 2
         muted = prefs.getBoolean("muted", false)
         workerThread.start()
         worker = Handler(workerThread.looper)
@@ -262,7 +262,7 @@ class EngineController(context: Context) {
     }
 
     fun selectEngine(kind: Int) {
-        if (kind !in 2..9) return
+        if (kind !in ENGINE_KINDS) return
         message("Loading instrument…")
         worker.post { load(kind) }
     }
@@ -494,7 +494,7 @@ class EngineController(context: Context) {
 
     private fun requireSloop() {
         if (machine == 0L || selectedKind != 2)
-            throw IOException("Project files require SLOOP 2.7.1.")
+            throw IOException("Project files require SLOOP 2.8.")
     }
 
     private fun projectFile(name: String): File =
@@ -525,7 +525,7 @@ class EngineController(context: Context) {
         @JvmField
         val ENGINE_NAMES =
             arrayOf(
-                "SLOOP 2.7.1",
+                "SLOOP 2.8",
                 "Felucca 1.6.1",
                 "X0X 1.1.0",
                 "Melodee 1.4.3",
@@ -533,8 +533,11 @@ class EngineController(context: Context) {
                 "Skiff 1.3.2",
                 "FoMni 0.4",
                 "Jangada 1.0.1",
+                "Clipper 1.1 Experimental",
+                "M-VAVE Stock V15 (emulated)",
+                "FM-1+VA 102 (emulated)",
             )
-        @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9)
+        @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
 
         fun safeName(value: String) =
             value.trim().replace(Regex("[^a-zA-Z0-9 _.-]"), "_").ifEmpty { "Project" }.take(80)

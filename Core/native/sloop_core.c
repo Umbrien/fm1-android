@@ -1,4 +1,4 @@
-/* sloop_core.c -- SLOOP 2.7.1 (engines/sloop/upstream, GPL-3.0-only; isod89, after Felucca by Leo
+/* sloop_core.c -- SLOOP 2.8 (engines/sloop/upstream, GPL-3.0-only; isod89, after Felucca by Leo
  * Kuroshita / Hügelton Instruments), the whole firmware, as a library the plugin can drive: a
  * virtual FM-1 running Sloop, with its sound, sequencer, arranger, screen, front panel, projects,
  * user presets and editor protocol.
@@ -266,12 +266,15 @@ static void felucca_init(void)
     song.g[G_SYNC] = (int16_t)lights_sync;
     song.g[G_MIDI] = (int16_t)lights_mout;    /* (2.4: settings of the FM-1, as G_SYNC) */
     song.g[G_ROUTE] = (int16_t)lights_min;
+#ifndef FM1_CLIPPER
     song.g[G_CH1] = midi_set[0], song.g[G_CH2] = midi_set[1], song.g[G_CH3] = midi_set[2];   /* (2.6: GLO > MIDI, */
     song.g[G_DRCH] = midi_set[3], song.g[G_CHOTH] = midi_set[4], song.g[G_BEND] = midi_set[5];   /* settings of the FM-1) */
     song.g[G_FXCH] = midi_set[6];            /* (2.7) GLO > MIDI 3: FX CH, DR MAP, CLOCK, REMOTE */
     song.g[G_DRMAP] = midi_set[7];
     song.g[G_CLKOUT] = midi_set[9];
     song.g[G_RMCH] = midi_set[8];
+    song.g[G_FXFADE] = fxfade;
+#endif
     layers_init();
     go_home();
     ui.force = 1;
@@ -333,15 +336,17 @@ static void fel_editor(void)
  * MASTER knob, the update and boot loader requests, the LEDs and the screen, drawn when asked) */
 static void fel_main_pass(void)
 {
-    /* Same MASTER ADC smoothing and override rules as exact 2.7.1 main.c. */
+    /* Same MASTER ADC smoothing and override rules as exact 2.8 main.c. */
     int32_t a = (int32_t)host_master;
     host_master_knob += (a * 16 - host_master_knob) / 8;
     uint32_t k10 = (uint32_t)(host_master_knob / 16);
+#ifndef FM1_CLIPPER
     if (ed_master) {
         if (ed_master_k == 0xFFFFu) ed_master_k = (uint16_t)k10;
         if (k10 + 48u < ed_master_k || k10 > ed_master_k + 48u) ed_master = 0;
         else k10 = (ed_master - 1u) * 1023u / 126u;
     }
+#endif
     song.master_q12 = (k10 * k10) >> 8;
 
     usb.uboot_req = 0;
@@ -500,7 +505,9 @@ void FEL(render)(int32_t *out, uint32_t frames)   /* interleaved stereo, frames 
                          (v[P_TFLT] ? 4u : 0u) | ((v[P_SLCR] && v[P_SLDEPTH]) ? 8u : 0u) |
                          (v[P_CHOR] ? 16u : 0u) | (v[P_DLY] ? 32u : 0u) | (v[P_REV] ? 64u : 0u);
             }
+#ifndef FM1_CLIPPER
             flags |= song.g[G_TXSRC] && song.g[G_TXLVL] ? 128u : 0u;
+#endif
             flags |= song.g[G_DUST] ? 256u : 0u;
             flags |= song.g[G_FILT] ? 512u : 0u;
             flags |= song.g[G_DUCK] ? 1024u : 0u;
@@ -707,6 +714,7 @@ const char *FEL(lane_name)(uint32_t track, uint32_t lane) { return track == TRK_
  * working project, 1 the settings, 2..5 the projects A..D, 6 and 7 the user preset banks, 8 the FM6
  * patch bank (2.4), 9 the SYN drum kits (2.5), 10 the MIDI part (2.6), 11 your theme (2.7: no bytes while there
  * is none). The user sample slots (32..35) are not kept here. --------------------------------- */
+#ifndef FM1_CLIPPER
 uint32_t FEL(object_max)(void) { return (uint32_t)sizeof proj_tmp; }
 
 int32_t FEL(object_get)(uint32_t id, uint8_t *out, uint32_t max)
@@ -765,6 +773,8 @@ uint32_t FEL(object_put)(uint32_t id, const uint8_t *data, uint32_t len)
     return rc;
 }
 
+#endif
+
 /* Raw emulator-compatible saves. Restore calls state_init first and init later. */
 void FEL(flash_load)(const uint8_t *bytes) { memcpy(host_flash, bytes, HOST_FLASH_SIZE); }
 void FEL(flash_copy)(uint8_t *bytes) { memcpy(bytes, host_flash, HOST_FLASH_SIZE); }
@@ -819,6 +829,7 @@ uint32_t FEL(workload_metrics)(uint64_t *out, uint32_t capacity)
 
 uint32_t FEL(ui_frames)(void) { return ui.frame; }
 
+#ifndef FM1_CLIPPER
 /* Typed file operations. Host calls these only on a bound, serialized instance;
  * imports target a disposable candidate until every component validates. */
 int32_t FEL(file_sample_read)(uint32_t slot,uint8_t *out,uint32_t capacity) {
@@ -858,3 +869,5 @@ uint32_t FEL(file_commit)(void) {
     autosave_hash=autosave_buf.sum;autosave_ms=fm1_ms;
     settings_save();return 0;
 }
+
+#endif

@@ -20,6 +20,12 @@ fn main() {
         "fm1_native_expansion",
     );
     build_extra("FM1_NATIVE_SKIFF", "skiff_build.py", "fm1_native_skiff");
+    println!("cargo:rustc-check-cfg=cfg(fm1_native_clipper)");
+    build_extra(
+        "FM1_NATIVE_CLIPPER",
+        "clipper_build.py",
+        "fm1_native_clipper",
+    );
     build_family();
     println!("cargo:rerun-if-env-changed=FM1_NATIVE_SLOOP");
     println!("cargo:rerun-if-changed=native");

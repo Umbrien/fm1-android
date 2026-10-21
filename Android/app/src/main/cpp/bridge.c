@@ -9,16 +9,16 @@
 static void fail(JNIEnv* e,const char* message){jclass c=(*e)->FindClass(e,"java/lang/IllegalStateException");(*e)->ThrowNew(e,c,message);}
 JNIEXPORT jlong JNICALL JNI(create)(JNIEnv* e,jclass c,jbyteArray data,jint required){
  (void)c;jsize size=(*e)->GetArrayLength(e,data);jbyte* bytes=(*e)->GetByteArrayElements(e,data,NULL);
- uint32_t kind=instrument_native_kind_for_fwsc((uint8_t*)bytes,size);void* m=NULL;uint8_t error[512]={0};
- if(kind==(uint32_t)required&&kind>=2&&kind<=9)m=instrument_create((uint8_t*)bytes,size,error,sizeof(error));
+ uint32_t kind=instrument_kind_for_fwsc((uint8_t*)bytes,size);void* m=NULL;uint8_t error[512]={0};
+ if(kind==(uint32_t)required&&kind>=2&&kind<=12)m=instrument_create((uint8_t*)bytes,size,error,sizeof(error));
  (*e)->ReleaseByteArrayElements(e,data,bytes,JNI_ABORT);
- if(!m){fail(e,error[0]?(char*)error:"Exact compiled native instrument is unavailable.");return 0;}
- if(instrument_native_kind(m)!=(uint32_t)required){instrument_destroy(m);fail(e,"Native instrument identity mismatch.");return 0;}
+ if(!m){fail(e,error[0]?(char*)error:"Exact instrument is unavailable.");return 0;}
+ if(instrument_kind(m)!=(uint32_t)required){instrument_destroy(m);fail(e,"Instrument identity mismatch.");return 0;}
  return (jlong)(uintptr_t)m;
 }
 JNIEXPORT void JNICALL JNI(destroy)(JNIEnv*e,jclass c,jlong handle){instrument_destroy(H);}
-JNIEXPORT jint JNICALL JNI(kind)(JNIEnv*e,jclass c,jlong handle){return instrument_native_kind(H);}
-JNIEXPORT jint JNICALL JNI(render)(JNIEnv*e,jclass c,jlong handle,jfloatArray pcm,jint frames){if(frames<1||frames>2048||(*e)->GetArrayLength(e,pcm)<frames*2)return 0;jfloat* out=(*e)->GetFloatArrayElements(e,pcm,NULL);int n=instrument_render(H,out,frames);(*e)->ReleaseFloatArrayElements(e,pcm,out,0);return n;}
+JNIEXPORT jint JNICALL JNI(kind)(JNIEnv*e,jclass c,jlong handle){return instrument_kind(H);}
+JNIEXPORT jint JNICALL JNI(render)(JNIEnv*e,jclass c,jlong handle,jfloatArray pcm,jint frames){if(frames<1||frames>2048||(*e)->GetArrayLength(e,pcm)<frames*2)return 0;jfloat* out=(*e)->GetFloatArrayElements(e,pcm,NULL);int n=instrument_render(H,out,frames);(*e)->ReleaseFloatArrayElements(e,pcm,out,0);if(instrument_halted(H))fail(e,"Firmware emulation stopped after an execution error.");return n;}
 JNIEXPORT void JNICALL JNI(key)(JNIEnv*e,jclass c,jlong handle,jint id,jboolean down){instrument_key(H,id,down);}
 JNIEXPORT void JNICALL JNI(release)(JNIEnv*e,jclass c,jlong handle){instrument_release_all(H);}
 JNIEXPORT void JNICALL JNI(encoder)(JNIEnv*e,jclass c,jlong handle,jint id,jint delta){instrument_encoder(H,id,delta);}

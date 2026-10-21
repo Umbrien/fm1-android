@@ -75,3 +75,62 @@ completed. A one-second stereo WAV was saved through the system destination
 picker; that imported loop was empty, so this specific provider file was silent.
 The separate recorded-pattern instrumentation established audible loop/song
 rendering. No physical listening acceptance is implied.
+
+## Firmware update — 2026-10-21
+
+SLOOP is now pinned to v2.8 (`b77bf55e3bf804665b8f5dffb5955bd8443311f0`).
+Clipper v1.1-experimental (`e69067211c4690f34e494b5b896e4585163dcc2b`)
+is a separate source-native engine (kind 10). Original M-VAVE Stock V15
+(`FM-1_015`, kind 11) uses the exact vendor recovery package through the
+PI32v2 interpreter, without JIT. FM1 Open V13 remains its separate preview.
+All ten package size/SHA256 checks and source/resource preparation passed.
+
+Validation on Apple Silicon macOS and the dedicated arm64 Android emulator:
+
+- All 27 source-enabled host Rust tests passed, including Clipper in the
+  shared sound/display/full-flash checks and the public ABI reopen checks.
+- All 13 Android instrumentation cases passed: nine native engines, stock
+  interpreter boot/note/LCD, SLOOP workspace/sample/loop/song operations,
+  Activity multitouch/lifecycle/persistence, and reset/reload of all ten entries.
+- SLOOP accepts the prior 2.7.1 workspace envelope identity. A disposable
+  2.8 candidate validates its typed components before replacing active work.
+  Instrumentation covers this envelope compatibility, preservation of typed
+  components, and rejection of unknown firmware identities; external iOS
+  exchange fixtures were not supplied for this run.
+- Stock produced 148992 frames (about 3.38 seconds), with nonzero finite note
+  PCM, in 1415 ms in the emulator check. This is a bounded synthetic render
+  measurement, not physical listening or sustained output-latency evidence.
+- Factory reset verification waits for the preceding Activity's worker to
+  terminate, preventing its pending save from contaminating the isolated test.
+- The signed APK contains ten exact packages; signature verification and
+  16 KiB ZIP alignment checks passed. Output:
+  `Android/build/FM1-android-arm64.apk` (13072899 bytes), SHA256
+  `a0ac81c7a307fb22e86ab32daeb45fcca8f6565bfe6db7e365c3aa8d0816489f`.
+
+Raw build receipts remain in ignored build/cache paths. Existing vendor Rust
+and Android deprecated-API warnings remain. No physical Android device,
+long-session thermal behavior, human listening acceptance or hardware parity
+was qualified. Clipper retains its upstream experimental designation, and
+stock is explicitly labelled emulated in the instrument picker.
+
+## FM-1+VA addition — 2026-10-21
+
+Added baud girl's exact FM-1+VA Version 102 package as kind 12, labelled
+emulated. Its published installer hash matches the downloaded package; it runs
+without JIT and owns a separate 1 MiB save. Optional preset packs are not bundled.
+
+All 28 source-enabled host tests and all 14 Android instrumentation cases
+passed with the new package present. Android tested its boot, LCD, finite
+nonzero note PCM, and independent reset/reload alongside the ten earlier entries.
+A panel-driven regression initializes VA and 8-Bit sounds using EDIT → Erase
+Preset, checks distinct displays, and plays both modes. Their measured peaks
+were 0.084320068359375 (VA) and 0.061737060546875 (8-Bit). The initial FM render
+produced 148992 frames in 1542 ms in the emulator; this bounded synthetic
+measurement does not establish physical listening quality or sustained latency.
+
+The new signed APK contains eleven pinned packages, passes signature and
+16 KiB ZIP alignment checks, and remains at
+`Android/build/FM1-android-arm64.apk`: 13937296 bytes, SHA256
+`ce757969b28062d1ff5a72381a74a8a67a1e6f67935208face23647057ae93a4`.
+The preceding ten-package APK hash above is historical. Physical-device
+validation and external iOS exchange fixtures remain outside this run.

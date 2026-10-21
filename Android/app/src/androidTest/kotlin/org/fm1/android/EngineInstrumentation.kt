@@ -125,6 +125,85 @@ class EngineInstrumentation : Instrumentation() {
         }
     }
 
+    private fun interpretedEngine(kind: Int): JSONObject {
+        val m = NativeEngine.create(asset(kind), kind)
+        try {
+            require(NativeEngine.kind(m) == kind, "stock identity mismatch")
+            val pcm = FloatArray(1024)
+            var frames = 0L
+            fun step(): Double {
+                val n = NativeEngine.render(m, pcm, 512)
+                require(n in 0..512, "stock returned invalid frame count")
+                frames += n
+                var peak = 0.0
+                for (i in 0 until n * 2) {
+                    require(pcm[i].isFinite(), "nonfinite stock PCM")
+                    peak = max(peak, abs(pcm[i]).toDouble())
+                }
+                return peak
+            }
+            val start = SystemClock.elapsedRealtime()
+            repeat(200) { step() }
+            NativeEngine.key(m, 21, true)
+            var peak = 0.0
+            repeat(100) { peak = max(peak, step()) }
+            NativeEngine.release(m)
+            require(peak > 0.00001, "silent stock note")
+            val pixels = IntArray(57600)
+            val leds = FloatArray(41)
+            require(NativeEngine.snapshot(m, pixels, leds) != 0, "stock snapshot failed")
+            require(pixels.count { it != pixels[0] } > 20, "blank stock LCD")
+            require(NativeEngine.flash(m).size == 1048576, "wrong stock flash size")
+            val elapsed = SystemClock.elapsedRealtime() - start
+            return JSONObject().put("kind", kind).put("backend", "interpreter")
+                .put("frames", frames).put("elapsedMs", elapsed).put("peak", peak)
+                .also { if (kind == 12) it.put("soundModes", fm1vaSoundModes()) }
+        } finally { NativeEngine.destroy(m) }
+    }
+
+    private fun fm1vaSoundModes(): JSONArray {
+        val results = JSONArray()
+        val displays = mutableSetOf<Int>()
+        for (mode in 1..2) {
+            val m = NativeEngine.create(asset(12), 12)
+            try {
+                val pcm = FloatArray(1024)
+                fun blocks(count: Int): Double {
+                    var peak = 0.0
+                    repeat(count) {
+                        val frames = NativeEngine.render(m, pcm, 512)
+                        require(frames in 0..512, "invalid FM-1+VA frame count")
+                        for (i in 0 until frames * 2) {
+                            require(pcm[i].isFinite(), "nonfinite FM-1+VA mode PCM")
+                            peak = max(peak, abs(pcm[i]).toDouble())
+                        }
+                    }
+                    return peak
+                }
+                fun press(id: Int) {
+                    NativeEngine.key(m, id, true); blocks(20)
+                    NativeEngine.key(m, id, false); blocks(20)
+                }
+                fun turn(delta: Int) { NativeEngine.encoder(m, 0, delta); blocks(30) }
+                blocks(200)
+                // Real v102 panel flow from its manual: EDIT > Erase Preset >
+                // Erase > VA/8-Bit > SEL. The original saved preset stays untouched.
+                press(6); turn(32); turn(-1); press(3); turn(1); press(3)
+                repeat(mode) { turn(1) }
+                press(3); press(8)
+                val pixels = IntArray(57600)
+                require(NativeEngine.snapshot(m, pixels, FloatArray(41)) != 0, "mode LCD missing")
+                require(displays.add(pixels.contentHashCode()), "VA and 8-Bit screens unexpectedly match")
+                NativeEngine.key(m, 21, true)
+                val peak = blocks(100)
+                NativeEngine.release(m)
+                require(peak > 0.00001, "silent FM-1+VA sound mode $mode")
+                results.put(JSONObject().put("mode", if (mode == 1) "VA" else "8-Bit").put("peak", peak))
+            } finally { NativeEngine.destroy(m) }
+        }
+        return results
+    }
+
     private fun fingerprint(s: ProjectSnapshot) = buildString {
         append(s.master)
         for ((name, bytes) in s.parts) {
@@ -158,6 +237,21 @@ class EngineInstrumentation : Instrumentation() {
             val backup = original.envelope("Device test backup", true)
             val imported = ProjectSnapshot.fromEnvelope(backup, "test.fm1backup")
             require(fingerprint(imported) == originalHash, "backup envelope changed parts")
+            val legacy = JSONObject(String(backup, Charsets.UTF_8))
+            legacy.getJSONObject("snapshot").put("packageSHA256", "7c9d269d15d1c1a48e0ebada7ffa2c2aa196c19d51056fd3f760d322322b335f")
+            val legacySnapshot = ProjectSnapshot.fromEnvelope(legacy.toString().toByteArray(Charsets.UTF_8), "legacy.fm1backup")
+            val legacyCandidate = legacySnapshot.create(bytes)
+            try {
+                val upgraded = ProjectSnapshot.capture(legacyCandidate, 716)
+                for ((name, data) in original.parts) if (name != "flash") require(
+                    data.contentEquals(upgraded.parts[name]), "legacy workspace changed $name",
+                )
+            } finally { NativeEngine.destroy(legacyCandidate) }
+            legacy.getJSONObject("snapshot").put("packageSHA256", "0".repeat(64))
+            var wrongReleaseRejected = false
+            try { ProjectSnapshot.fromEnvelope(legacy.toString().toByteArray(Charsets.UTF_8), "wrong.fm1backup") }
+            catch (expected: Exception) { wrongReleaseRejected = true }
+            require(wrongReleaseRejected, "unknown firmware workspace accepted")
             val corrupt = JSONObject(String(backup, Charsets.UTF_8))
             corrupt
                 .getJSONObject("snapshot")
@@ -447,7 +541,7 @@ class EngineInstrumentation : Instrumentation() {
                 require(controller.selectedKind == kind && controller.paused, "reset changed host state")
                 for ((name, hash) in otherStates) require(
                     ProjectSnapshot.digest(File(directory, name).readBytes()) == hash,
-                    "reset changed another firmware",
+                    "reset kind $kind changed another firmware $name",
                 )
                 for ((name, hash) in projectFiles) require(
                     ProjectSnapshot.digest(File(targetContext.filesDir, "Projects/$name").readBytes()) == hash,
@@ -739,7 +833,11 @@ class EngineInstrumentation : Instrumentation() {
                     "recreated Activity did not restore native instrument",
                 )
             } finally {
+                val restored = field(reopened, "engine") as EngineController
                 runOnMainSync { reopened.finish() }
+                waitForIdleSync()
+                (field(restored, "workerThread") as Thread).join(10000)
+                require(!(field(restored, "workerThread") as Thread).isAlive, "recreated Activity worker did not close")
             }
             require(
                 warmFrames > 44100 * 3 && warmOutputFrames > 44100 * 3,
@@ -760,13 +858,19 @@ class EngineInstrumentation : Instrumentation() {
                 .put("underflowFrames", controller.underflowFrames)
                 .put("peak", activityPeak)
         } finally {
+            val owner = field(activity, "engine") as EngineController
             runOnMainSync { activity.finish() }
+            waitForIdleSync()
+            (field(owner, "workerThread") as Thread).join(10000)
+            require(!(field(owner, "workerThread") as Thread).isAlive, "Activity worker did not close")
         }
     }
 
     private fun runChecks() {
         if (!uiOnly) {
-            for (kind in 2..9) check("engine-$kind") { engine(kind) }
+            for (kind in 2..10) check("engine-$kind") { engine(kind) }
+            check("engine-11-stock") { interpretedEngine(11) }
+            check("engine-12-fm1va") { interpretedEngine(12) }
             check("sloop-workspace-sample-loop-song", ::workspace)
             if (exchangeTests) check("cross-platform-workspace", ::crossPlatform)
         }
