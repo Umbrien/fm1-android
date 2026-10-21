@@ -49,7 +49,7 @@ The source repository includes no firmware binaries, generated firmware assets,
 APKs, signing credentials or upstream firmware checkouts. Build preparation is
 an explicit developer operation; the app never downloads or compiles engines.
 
-Validated build host: Apple Silicon macOS, Java 19, Rust, Python 3.12+, Android
+Validated build host: Apple Silicon macOS, Java 19/21, Rust, Python 3.12+, Android
 SDK platform 35/build-tools 35.0.0, NDK 27.2.12479018 and host LLVM 20. Linux NDK
 host discovery is supported but has not been validated. Kotlin 2.0.21 and its
 standard library are pinned by SHA256; firmware resource generation needs
@@ -57,13 +57,16 @@ build-only Pillow 13.0.0 with RAQM and fonttools. Exact generation-library versi
 resource hashes are recorded in the lock files.
 
 ```sh
-python3 -m venv .venv
+brew install python@3.12 llvm@20 libraqm
+python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install 'Pillow==13.0.0' fonttools
+python -m pip install --no-binary=pillow 'Pillow==13.0.0' fonttools
 python -c 'from PIL import features; assert features.check("raqm")'
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
-export FM1_NATIVE_LLVM_BIN="/opt/homebrew/opt/llvm/bin" # LLVM 20
+export FM1_NATIVE_LLVM_BIN="/opt/homebrew/opt/llvm@20/bin"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 rustup target add aarch64-linux-android
 python scripts/prepare.py
 ./Android/build.sh --core
@@ -73,6 +76,10 @@ Preparation clones the exact source pins, runs upstream resource generators,
 and downloads size/SHA256-checked release packages into ignored `Research/`.
 Existing changed checkouts or mismatching packages fail instead of being reset
 or overwritten. See [detailed prerequisites and cache layout](docs/build.md).
+That guide also covers the configured checkout's `.tools/env.sh`, incremental
+builds and emulator launch. Source-built Pillow with the recorded host font
+libraries is required to reproduce the locked font bytes; see the guide before
+upgrading FreeType or RAQM.
 The shared crate retains its historical `fm1-ios-core` name to avoid ABI churn;
 there is no iOS frontend in this repository.
 
@@ -87,6 +94,7 @@ published; this repository supplies source and build instructions.
 
 ```sh
 adb install -r Android/build/FM1-android-arm64.apk
+adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 

@@ -19,7 +19,8 @@ def verify_expansion(source,descriptor):
     run('git','-C',source,'diff','--exit-code','HEAD')
     actual={str(f.relative_to(source)):hashlib.sha256(f.read_bytes()).hexdigest()
             for directory in ['firmware','host','tools','assets','web/words']
-            for f in sorted((source/directory).rglob('*')) if f.is_file()}
+            for f in sorted((source/directory).rglob('*'))
+            if f.is_file() and '__pycache__' not in f.parts and f.suffix not in {'.pyc', '.pyo'}}
     if actual!=descriptor['inputs']:raise SystemExit('Exact source/resource input set differs: '+descriptor['id'])
     for name,want in descriptor['notices_sha256'].items():
         if hashlib.sha256((source/name).read_bytes()).hexdigest()!=want:raise SystemExit('Changed notice: '+name)

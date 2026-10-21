@@ -1,8 +1,48 @@
 # Reproducible local build
 
+## Daily development
+
+Run commands from the repository root. This project uses shell scripts rather
+than Gradle; Android Studio can provide the SDK, editor and Device Manager.
+Start an **arm64** virtual device in Device Manager before installing the APK.
+
+For the checkout configured during local setup, load its ignored environment:
+
+```sh
+source .tools/env.sh
+./Android/build.sh --core
+adb devices -l
+adb install -r Android/build/FM1-android-arm64.apk
+adb shell am start -n org.fm1.android/.MainActivity
+```
+
+`.tools/env.sh` is machine-local and is not supplied by a fresh clone. It selects
+the local `.tools/android-sdk`, NDK 27.2.12479018, Java 21, LLVM 20 and `.venv`.
+For another checkout, follow the prerequisites below and configure the environment
+explicitly (adjust the SDK path if needed):
+
+```sh
+source .venv/bin/activate
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+export FM1_NATIVE_LLVM_BIN="/opt/homebrew/opt/llvm@20/bin"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
+```
+
+For Kotlin/JNI-only changes, `./Android/build.sh` reuses the existing native
+archive. Rebuild with `--core` after C/Rust engine changes, then reinstall with
+`adb install -r` and launch again. The signed APK is
+`Android/build/FM1-android-arm64.apk`.
+
+Run `./Android/test.sh` after installation on the test emulator. Its complete
+output is saved to `Android/build/test/result.txt`. On 2026-10-21, the standalone
+build passed all ten default cases on an arm64 Android 17 emulator (API 37);
+external exchange fixtures and physical-device validation were not included.
+
 ## Tools
 
-Validated on Apple Silicon macOS with Java 19, Python 3.12+, Rust, host LLVM 20,
+Validated on Apple Silicon macOS with Java 19 and 21, Python 3.12+, Rust, host LLVM 20,
 Android SDK platform 35/build-tools 35.0.0 and NDK 27.2.12479018. A Java 17+
 toolchain is required by current Android build tools. Runtime uses only platform
 Kotlin/JVM APIs, the Rust standard library, and the pinned native sources.
@@ -47,6 +87,23 @@ The family lock records the validated Pillow/FreeType/RAQM versions. Generated
 font/image bytes are pinned; another rendering-library version may correctly
 fail verification. Restore the recorded build environment rather than changing
 expected hashes to accept a different asset.
+
+On Apple Silicon, the prebuilt Pillow 13.0.0 wheel can produce different font
+bytes even with the recorded FreeType and RAQM versions. A source build against
+Homebrew FreeType 2.14.3 and libraqm 0.11.0 reproduces the locked resources:
+
+```sh
+brew install python@3.12 llvm@20 libraqm
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --no-binary=pillow 'Pillow==13.0.0' fonttools
+export FM1_NATIVE_LLVM_BIN="/opt/homebrew/opt/llvm@20/bin"
+```
+
+Check the installed FreeType version before generation; package-manager updates
+may install a newer version. Keep the existing resource hashes as the acceptance
+check. The expansion source lock excludes Python bytecode caches, whose bytes
+depend on the interpreter and absolute checkout path.
 
 ```sh
 python scripts/prepare.py
@@ -94,7 +151,7 @@ adb install -r Android/build/FM1-android-arm64.apk
 ```
 
 The --core option prepares the Rust static archive and all eight native engines.
-Later Java/JNI-only iterations may omit --core to reuse that archive. APK assets
+Later Kotlin/JNI-only iterations may omit --core to reuse that archive. APK assets
 are checked against packages.lock.json before packaging. Native ELF segments
 use 16 KiB alignment. This is an arm64-only APK with minSdk 26 and targetSdk 35.
 
