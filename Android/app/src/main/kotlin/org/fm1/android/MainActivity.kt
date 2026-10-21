@@ -2,32 +2,42 @@ package org.fm1.android
 
 import android.app.*
 import android.content.*
-import android.content.res.ColorStateList
 import android.graphics.*
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.text.SpannableString
-import android.text.Spanned
-import android.text.style.ReplacementSpan
 import android.view.*
 import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.content.res.AppCompatResources
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.checkbox.MaterialCheckBox
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.CircularProgressIndicator
+import com.google.android.material.slider.Slider
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.textview.MaterialTextView
 import java.io.*
 import kotlin.math.*
 
 /** Landscape native shell; storage access is explicitly initiated through Android's picker. */
-class MainActivity : Activity(), EngineController.Listener {
+class MainActivity : AppCompatActivity(), EngineController.Listener {
     private lateinit var engine: EngineController
     private lateinit var panel: PanelView
     private lateinit var column: LinearLayout
     private lateinit var toolbar: LinearLayout
     private lateinit var root: FrameLayout
-    private lateinit var firmware: TextView
-    private lateinit var transport: TextView
-    private lateinit var mute: TextView
-    private lateinit var folder: Button
-    private lateinit var collapse: Button
+    private lateinit var firmware: MaterialButton
+    private lateinit var transport: MaterialButton
+    private lateinit var mute: MaterialButton
+    private lateinit var folder: MaterialButton
+    private lateinit var collapse: MaterialButton
     private lateinit var preferences: SharedPreferences
     private var finish = 0
     private var collapsed = false
@@ -44,9 +54,11 @@ class MainActivity : Activity(), EngineController.Listener {
         private const val EXPORT = 102
     }
 
-    private fun accent() = 0xff000000.toInt() or PanelView.PALETTES[finish][7]
+    private fun color(attribute: Int) = MaterialColors.getColor(this, attribute, "FM1 theme")
+    private fun accent() = color(androidx.appcompat.R.attr.colorPrimary)
 
     override fun onCreate(state: Bundle?) {
+        DynamicColors.applyToActivityIfAvailable(this)
         super.onCreate(state)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.decorView.systemUiVisibility =
@@ -62,43 +74,47 @@ class MainActivity : Activity(), EngineController.Listener {
         engine = EngineController(this)
         engine.setListener(this)
         root = FrameLayout(this)
-        root.setBackgroundColor(Color.BLACK)
+        root.setBackgroundColor(color(com.google.android.material.R.attr.colorSurface))
         root.setPadding(dp(8f), dp(4f), dp(6f), dp(2f))
         column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
         val cp = FrameLayout.LayoutParams(-1, -1)
-        cp.rightMargin = dp(44f)
+        cp.rightMargin = dp(48f)
         root.addView(column, cp)
         toolbar = LinearLayout(this)
         toolbar.gravity = Gravity.CENTER_VERTICAL
         toolbar.setPadding(dp(8f), 0, dp(8f), 0)
-        column.addView(toolbar, LinearLayout.LayoutParams(-1, dp(32f)))
-        firmware = chrome("") { library() }
+        column.addView(toolbar, LinearLayout.LayoutParams(-1, dp(48f)))
+        firmware = MaterialButton(this, null, R.attr.systemButtonStyle)
+        firmware.icon = AppCompatResources.getDrawable(this, R.drawable.ic_expand_more)
+        firmware.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
+        firmware.setOnClickListener { library() }
         firmware.setSingleLine(true)
+        firmware.ellipsize = android.text.TextUtils.TruncateAt.END
         firmware.gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
         toolbar.addView(firmware, LinearLayout.LayoutParams(0, -1, 1f))
         transport =
-            chrome("Ⅱ") {
+            iconButton(R.drawable.ic_pause, "Pause instrument") {
                 engine.setPaused(!engine.paused)
                 refreshChrome()
             }
         toolbar.addView(transport, LinearLayout.LayoutParams(dp(48f), -1))
         mute =
-            chrome("♪") {
+            iconButton(R.drawable.ic_volume_up, "Mute output") {
                 engine.setMuted(!engine.muted)
                 refreshChrome()
             }
         toolbar.addView(mute, LinearLayout.LayoutParams(dp(48f), -1))
         mute.contentDescription = "Mute or unmute output"
-        val colors = chrome("●") { chooseFinish() }
+        val colors = iconButton(R.drawable.ic_palette, "Panel color") { chooseFinish() }
         colors.contentDescription = "Panel color"
         toolbar.addView(colors, LinearLayout.LayoutParams(dp(48f), -1))
-        val info = chrome("ⓘ") { about() }
+        val info = iconButton(R.drawable.ic_info, "About FM–1") { about() }
         info.contentDescription = "About FM–1"
-        toolbar.addView(info, LinearLayout.LayoutParams(dp(44f), -1))
-        val reset = chrome("↻") { confirmFirmwareReset() }
+        toolbar.addView(info, LinearLayout.LayoutParams(dp(48f), -1))
+        val reset = iconButton(R.drawable.ic_restart, "Reset firmware") { confirmFirmwareReset() }
         reset.contentDescription = "Reset firmware"
-        toolbar.addView(reset, LinearLayout.LayoutParams(dp(44f), -1))
+        toolbar.addView(reset, LinearLayout.LayoutParams(dp(48f), -1))
         panel = PanelView(this)
         panel.setMasterIndicator(engine.getMaster())
         column.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -115,18 +131,18 @@ class MainActivity : Activity(), EngineController.Listener {
         )
         val side = LinearLayout(this)
         side.orientation = LinearLayout.VERTICAL
-        val sp = FrameLayout.LayoutParams(dp(44f), -2, Gravity.RIGHT or Gravity.TOP)
+        val sp = FrameLayout.LayoutParams(dp(48f), -2, Gravity.RIGHT or Gravity.TOP)
         sp.topMargin = dp(12f)
         root.addView(side, sp)
         collapse =
-            sideButton("⌃", "Hide top controls") {
+            iconButton(R.drawable.ic_expand_less, "Hide top controls") {
                 collapsed = !collapsed
                 preferences.edit().putBoolean("collapsed", collapsed).apply()
                 applyFinish()
             }
-        side.addView(collapse, LinearLayout.LayoutParams(-1, dp(44f)))
-        folder = sideButton("▱", "Projects and files") { files() }
-        side.addView(folder, LinearLayout.LayoutParams(-1, dp(44f)))
+        side.addView(collapse, LinearLayout.LayoutParams(-1, dp(48f)))
+        folder = iconButton(R.drawable.ic_folder, "Projects and files") { files() }
+        side.addView(folder, LinearLayout.LayoutParams(-1, dp(48f)))
         setContentView(root)
         root.setOnApplyWindowInsetsListener { _, insets ->
             root.setPadding(
@@ -139,7 +155,7 @@ class MainActivity : Activity(), EngineController.Listener {
         }
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             panel.setReferenceHeight(
-                (root.height - root.paddingTop - root.paddingBottom - dp(32f)).toFloat()
+                (root.height - root.paddingTop - root.paddingBottom - dp(48f)).toFloat()
             )
         }
         applyFinish()
@@ -147,155 +163,28 @@ class MainActivity : Activity(), EngineController.Listener {
 
     private fun dp(n: Float) = (n * resources.displayMetrics.density).roundToInt()
 
-    private fun chrome(value: String, click: View.OnClickListener): TextView {
-        val b =
-            object : TextView(this) {
-                val p = Paint(Paint.ANTI_ALIAS_FLAG)
-
-                override fun onDraw(c: Canvas) {
-                    val symbol = text.toString()
-                    if (symbol !in arrayOf("Ⅱ", "▶", "♪", "♩ ×", "●", "ⓘ", "↻")) {
-                        super.onDraw(c)
-                        return
-                    }
-                    val save = c.save()
-                    c.translate(width / 2f, height / 2f)
-                    c.scale(resources.displayMetrics.density, resources.displayMetrics.density)
-                    p.color = accent()
-                    p.strokeWidth = 1.6f
-                    p.style = Paint.Style.STROKE
-                    p.strokeJoin = Paint.Join.ROUND
-                    p.strokeCap = Paint.Cap.ROUND
-                    when (symbol) {
-                        "↻" -> {
-                            c.drawArc(RectF(-7f, -7f, 7f, 7f), -90f, 300f, false, p)
-                            val arrow = Path().apply {
-                                moveTo(-4f, -10f)
-                                lineTo(0f, -7f)
-                                lineTo(-4f, -4f)
-                            }
-                            c.drawPath(arrow, p)
-                        }
-                        "Ⅱ" -> {
-                            c.drawLine(-3f, -6f, -3f, 6f, p)
-                            c.drawLine(3f, -6f, 3f, 6f, p)
-                        }
-                        "▶" -> {
-                            p.style = Paint.Style.FILL
-                            val path = Path()
-                            path.moveTo(-5f, -7f)
-                            path.lineTo(7f, 0f)
-                            path.lineTo(-5f, 7f)
-                            path.close()
-                            c.drawPath(path, p)
-                        }
-                        "♪",
-                        "♩ ×" -> {
-                            val path = Path()
-                            path.moveTo(-9f, -3f)
-                            path.lineTo(-5f, -3f)
-                            path.lineTo(0f, -8f)
-                            path.lineTo(0f, 8f)
-                            path.lineTo(-5f, 3f)
-                            path.lineTo(-9f, 3f)
-                            path.close()
-                            c.drawPath(path, p)
-                            if (symbol == "♪") {
-                                c.drawArc(RectF(-3f, -6f, 7f, 6f), -60f, 120f, false, p)
-                                c.drawArc(RectF(-6f, -10f, 11f, 10f), -60f, 120f, false, p)
-                            } else {
-                                c.drawLine(4f, -3f, 9f, 3f, p)
-                                c.drawLine(4f, 3f, 9f, -3f, p)
-                            }
-                        }
-                        "●" -> {
-                            p.style = Paint.Style.FILL
-                            p.color = 0xff000000.toInt() or PanelView.PALETTES[finish][0]
-                            c.drawCircle(-3f, 0f, 7f, p)
-                            p.color = 0xff000000.toInt() or PanelView.PALETTES[finish][3]
-                            c.drawCircle(4f, 0f, 7f, p)
-                        }
-                        else -> {
-                            c.drawCircle(0f, 0f, 8f, p)
-                            c.drawLine(0f, -1f, 0f, 5f, p)
-                            c.drawLine(-2f, 5f, 2f, 5f, p)
-                            p.style = Paint.Style.FILL
-                            c.drawCircle(0f, -4f, 1f, p)
-                        }
-                    }
-                    c.restoreToCount(save)
-                }
-            }
-        b.text = value
-        b.textSize = 19f
-        b.gravity = Gravity.CENTER
-        b.setTextColor(accent())
-        b.setOnClickListener(click)
-        return b
-    }
-
-    private fun sideButton(text: String, label: String, click: View.OnClickListener): Button {
-        val b =
-            object : Button(this) {
-                val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-                override fun onDraw(c: Canvas) {
-                    iconPaint.color = accent()
-                    iconPaint.style = Paint.Style.STROKE
-                    iconPaint.strokeWidth = dp(1.6f).toFloat()
-                    iconPaint.strokeJoin = Paint.Join.ROUND
-                    iconPaint.strokeCap = Paint.Cap.ROUND
-                    val cx = width / 2f
-                    val cy = height / 2f
-                    if (contentDescription == "Projects and files") {
-                        val path = Path()
-                        path.moveTo(cx - dp(9f), cy + dp(7f))
-                        path.lineTo(cx - dp(9f), cy - dp(7f))
-                        path.lineTo(cx - dp(3f), cy - dp(7f))
-                        path.lineTo(cx, cy - dp(4f))
-                        path.lineTo(cx + dp(9f), cy - dp(4f))
-                        path.lineTo(cx + dp(9f), cy + dp(7f))
-                        path.close()
-                        c.drawPath(path, iconPaint)
-                        c.drawLine(cx - dp(8f), cy - dp(2f), cx + dp(8f), cy - dp(2f), iconPaint)
-                    } else {
-                        val direction = if (collapsed) 1 else -1
-                        c.drawLine(
-                            cx - dp(5f),
-                            cy - direction * dp(2.5f),
-                            cx,
-                            cy + direction * dp(2.5f),
-                            iconPaint,
-                        )
-                        c.drawLine(
-                            cx,
-                            cy + direction * dp(2.5f),
-                            cx + dp(5f),
-                            cy - direction * dp(2.5f),
-                            iconPaint,
-                        )
-                    }
-                }
-            }
-        b.text = text
-        b.textSize = 24f
-        b.contentDescription = label
-        b.setBackgroundColor(Color.TRANSPARENT)
-        b.setPadding(0, 0, 0, 0)
-        b.setOnClickListener(click)
-        return b
-    }
+    private fun iconButton(icon: Int, label: String, click: View.OnClickListener) =
+        MaterialButton(this, null, R.attr.systemButtonStyle).apply {
+            this.icon = AppCompatResources.getDrawable(this@MainActivity, icon)
+            iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+            iconPadding = 0
+            iconSize = dp(24f)
+            minWidth = dp(48f)
+            minimumWidth = dp(48f)
+            setPadding(dp(12f), 0, dp(12f), 0)
+            insetTop = 0
+            insetBottom = 0
+            contentDescription = label
+            tooltipText = label
+            setOnClickListener(click)
+        }
 
     private fun applyFinish() {
         panel.setFinish(finish)
         toolbar.visibility = if (collapsed) View.GONE else View.VISIBLE
-        collapse.text = if (collapsed) "⌄" else "⌃"
+        collapse.setIconResource(if (collapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less)
         collapse.contentDescription = if (collapsed) "Show top controls" else "Hide top controls"
-        collapse.setTextColor(accent())
-        folder.setTextColor(accent())
-        for (i in 0 until toolbar.childCount) (toolbar.getChildAt(i) as TextView).setTextColor(
-            accent()
-        )
+        collapse.tooltipText = collapse.contentDescription
         refreshChrome()
     }
 
@@ -307,40 +196,14 @@ class MainActivity : Activity(), EngineController.Listener {
         )
             index = i
         val name = EngineController.ENGINE_NAMES[index]
-        firmware.text = SpannableString("$name \uFFFC").apply {
-            setSpan(object : ReplacementSpan() {
-                override fun getSize(
-                    paint: Paint, text: CharSequence, start: Int, end: Int,
-                    fm: Paint.FontMetricsInt?,
-                ) = dp(12f)
-
-                override fun draw(
-                    canvas: Canvas, text: CharSequence, start: Int, end: Int,
-                    x: Float, top: Int, y: Int, bottom: Int, paint: Paint,
-                ) {
-                    val bounds = Rect()
-                    paint.getTextBounds(name, 0, name.length, bounds)
-                    val centerY = y + bounds.exactCenterY()
-                    val chevronPaint = Paint(paint).apply {
-                        style = Paint.Style.STROKE
-                        strokeWidth = dp(1.4f).toFloat()
-                        strokeCap = Paint.Cap.ROUND
-                        strokeJoin = Paint.Join.ROUND
-                    }
-                    val path = Path().apply {
-                        moveTo(x + dp(2f), centerY - dp(2f))
-                        lineTo(x + dp(6f), centerY + dp(2f))
-                        lineTo(x + dp(10f), centerY - dp(2f))
-                    }
-                    canvas.drawPath(path, chevronPaint)
-                }
-            }, name.length + 1, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
+        firmware.text = name
         firmware.contentDescription = "$name, select firmware"
-        transport.text = if (engine.paused) "▶" else "Ⅱ"
-        transport.contentDescription =
-            if (engine.paused) "Resume instrument" else "Pause instrument"
-        mute.text = if (engine.muted) "♩ ×" else "♪"
+        transport.setIconResource(if (engine.paused) R.drawable.ic_play_arrow else R.drawable.ic_pause)
+        transport.contentDescription = if (engine.paused) "Resume instrument" else "Pause instrument"
+        transport.tooltipText = transport.contentDescription
+        mute.setIconResource(if (engine.muted) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
+        mute.contentDescription = if (engine.muted) "Unmute output" else "Mute output"
+        mute.tooltipText = mute.contentDescription
         folder.visibility = if (engine.selectedKind == 2) View.VISIBLE else View.GONE
     }
 
@@ -357,9 +220,10 @@ class MainActivity : Activity(), EngineController.Listener {
     }
 
     private fun library() {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Instruments")
-            .setItems(EngineController.ENGINE_NAMES) { _, i ->
+            .setSingleChoiceItems(EngineController.ENGINE_NAMES, EngineController.ENGINE_KINDS.indexOf(engine.selectedKind)) { dialog, i ->
+                dialog.dismiss()
                 panel.releaseTouches()
                 engine.selectEngine(EngineController.ENGINE_KINDS[i])
             }
@@ -370,7 +234,7 @@ class MainActivity : Activity(), EngineController.Listener {
     private fun confirmFirmwareReset() {
         val kind = engine.selectedKind
         val name = EngineController.ENGINE_NAMES[EngineController.ENGINE_KINDS.indexOf(kind)]
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Reset $name?")
             .setMessage(
                 "Restart this firmware from a fresh boot and erase all its current and " +
@@ -387,35 +251,16 @@ class MainActivity : Activity(), EngineController.Listener {
     }
 
     private fun chooseFinish() {
-        val grid = LinearLayout(this)
-        grid.setPadding(dp(12f), dp(8f), dp(12f), dp(8f))
-        grid.orientation = LinearLayout.VERTICAL
-        for (row in 0..2) {
-            val line = LinearLayout(this)
-            grid.addView(line)
-            for (col in 0..1) {
-                val index = row * 2 + col
-                val button = Button(this)
-                button.text = (if (finish == index) "✓  " else "") + PanelView.FINISH_NAMES[index]
-                button.setTextColor(0xff000000.toInt() or PanelView.PALETTES[index][5])
-                button.backgroundTintList =
-                    ColorStateList.valueOf(0xff000000.toInt() or PanelView.PALETTES[index][0])
-                line.addView(button, LinearLayout.LayoutParams(0, dp(58f), 1f))
-                button.setOnClickListener {
-                    finish = index
-                    preferences.edit().putInt("finish", finish).apply()
-                    applyFinish()
-                    finishDialog?.dismiss()
-                }
+        finishDialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Panel color")
+            .setSingleChoiceItems(PanelView.FINISH_NAMES, finish) { dialog, index ->
+                finish = index
+                preferences.edit().putInt("finish", finish).apply()
+                applyFinish()
+                dialog.dismiss()
             }
-        }
-        finishDialog =
-            AlertDialog.Builder(this)
-                .setTitle("Panel color")
-                .setView(grid)
-                .setNegativeButton("Close", null)
-                .create()
-        finishDialog!!.show()
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun enlargeDisplay() {
@@ -445,7 +290,7 @@ class MainActivity : Activity(), EngineController.Listener {
                 }
             }
         val dialog =
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle("Instrument display")
                 .setView(zoom)
                 .setPositiveButton("Done", null)
@@ -459,7 +304,7 @@ class MainActivity : Activity(), EngineController.Listener {
     }
 
     private fun about() {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("FM–1")
             .setMessage(
                 "Unofficial native FM–1 instrument. Nine source-compiled engines plus emulated M-VAVE Stock V15 and FM-1+VA 102.\n\nPlay the 27 keys; drag knobs vertically. Hold function buttons for firmware combinations. Tap the display to enlarge it. MASTER controls the instrument; the speaker control mutes the output.\n\nProjects and samples stay on this device unless you explicitly export them. No account or telemetry. Backgrounding pauses audio.\n\nGPL-3.0-only. Includes fm1-emu (MIT) and source-native engines by their respective authors. Not affiliated with M-VAVE. Stock V15 and FM-1+VA emulation are experimental and may run below real time. Portable FM1 Open preview may differ from hardware and does not include the original factory sound bank."
@@ -474,7 +319,7 @@ class MainActivity : Activity(), EngineController.Listener {
             val names =
                 assets.list("notices") ?: throw IOException("License notices are unavailable.")
             names.sort()
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle("Credits and licenses")
                 .setItems(names) { _, i ->
                     try {
@@ -490,7 +335,7 @@ class MainActivity : Activity(), EngineController.Listener {
                         text.setPadding(dp(18f), dp(12f), dp(18f), dp(12f))
                         val scroll = ScrollView(this)
                         scroll.addView(text)
-                        AlertDialog.Builder(this)
+                        MaterialAlertDialogBuilder(this)
                             .setTitle(names[i])
                             .setView(scroll)
                             .setPositiveButton("Done", null)
@@ -516,7 +361,7 @@ class MainActivity : Activity(), EngineController.Listener {
                 "Samples · import WAV…",
                 "Audio · export WAV…",
             )
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Projects and files · SLOOP")
             .setItems(options) { _, i ->
                 when (i) {
@@ -545,12 +390,10 @@ class MainActivity : Activity(), EngineController.Listener {
     }
 
     private fun nameCopy(backup: Boolean) {
-        val name = EditText(this)
-        name.setSingleLine()
-        name.hint = if (backup) "Workspace backup" else "Project name"
-        AlertDialog.Builder(this)
+        val (nameField, name) = textField(if (backup) "Workspace backup" else "Project name")
+        MaterialAlertDialogBuilder(this)
             .setTitle(if (backup) "Back up workspace" else "Save project copy")
-            .setView(name)
+            .setView(formContent(nameField))
             .setMessage(
                 if (backup) "Saves sounds, user samples and instrument settings."
                 else
@@ -567,21 +410,21 @@ class MainActivity : Activity(), EngineController.Listener {
     private fun saved() {
         val names = engine.listProjects()
         if (names.isEmpty()) {
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle("Saved work")
                 .setMessage("No saved copies yet. Use Save project copy or Back up workspace.")
                 .setPositiveButton("Done", null)
                 .show()
             return
         }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Saved work")
             .setItems(names) { _, i ->
-                AlertDialog.Builder(this)
+                MaterialAlertDialogBuilder(this)
                     .setTitle(names[i])
                     .setItems(arrayOf("Open…", "Export…")) { _, choice ->
                         if (choice == 0)
-                            AlertDialog.Builder(this)
+                            MaterialAlertDialogBuilder(this)
                                 .setTitle("Open this saved copy?")
                                 .setMessage(
                                     "Replaces current work. A recovery backup is saved first."
@@ -654,7 +497,7 @@ class MainActivity : Activity(), EngineController.Listener {
                         }
                     val filename = displayName(uri)
                     ProjectSnapshot.fromEnvelope(bytes, filename)
-                    AlertDialog.Builder(this)
+                    MaterialAlertDialogBuilder(this)
                         .setTitle("Import saved work?")
                         .setMessage(
                             "The file is checked before it is saved to your library. Your current instrument keeps playing."
@@ -681,7 +524,7 @@ class MainActivity : Activity(), EngineController.Listener {
     }
 
     private fun loadSample(uri: Uri) {
-        val loading = ProgressDialog.show(this, "Sample", "Reading WAV…", true, false)
+        val loading = progressDialog("Sample", "Reading WAV…")
         Thread(
                 {
                     try {
@@ -715,11 +558,59 @@ class MainActivity : Activity(), EngineController.Listener {
     }
 
     private fun label(value: String) =
-        TextView(this).apply {
+        MaterialTextView(this).apply {
             text = value
-            textSize = 15f
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
             setPadding(dp(4f), dp(5f), dp(4f), dp(3f))
         }
+
+    private fun textField(hint: String, value: String = "", numeric: Boolean = false): Pair<TextInputLayout, TextInputEditText> {
+        val field = TextInputLayout(this)
+        field.hint = hint
+        val input = TextInputEditText(field.context)
+        input.setSingleLine()
+        if (numeric) input.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        input.setText(value)
+        field.addView(input, LinearLayout.LayoutParams(-1, -2))
+        return field to input
+    }
+
+    private fun formContent(view: View) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(24f), dp(8f), dp(24f), dp(8f))
+        addView(view)
+    }
+
+    private fun dropdown(hint: String, entries: Array<String>): Pair<TextInputLayout, MaterialAutoCompleteTextView> {
+        val field = TextInputLayout(this, null, com.google.android.material.R.attr.textInputOutlinedExposedDropdownMenuStyle)
+        field.hint = hint
+        val input = MaterialAutoCompleteTextView(field.context)
+        input.inputType = android.text.InputType.TYPE_NULL
+        input.setSimpleItems(entries)
+        input.setText(entries[0], false)
+        input.tag = 0
+        input.setOnItemClickListener { _, _, position, _ -> input.tag = position }
+        field.addView(input, LinearLayout.LayoutParams(-1, -2))
+        return field to input
+    }
+
+    private fun progressDialog(title: String, message: String, cancel: (() -> Unit)? = null): AlertDialog {
+        val content = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24f), dp(16f), dp(24f), dp(16f))
+            addView(CircularProgressIndicator(this@MainActivity).apply { isIndeterminate = true },
+                LinearLayout.LayoutParams(dp(48f), dp(48f)).apply { marginEnd = dp(20f) })
+            addView(label(message), LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        val builder = MaterialAlertDialogBuilder(this).setTitle(title).setView(content)
+            .setCancelable(cancel != null)
+        if (cancel != null) builder.setNegativeButton("Cancel") { _, _ -> cancel() }
+        return builder.create().apply {
+            setCanceledOnTouchOutside(false)
+            if (cancel != null) setOnCancelListener { cancel() }
+            show()
+        }
+    }
 
     private fun sampleEditor(source: SampleAudio.Source, name: String) {
         val content = LinearLayout(this)
@@ -736,7 +627,7 @@ class MainActivity : Activity(), EngineController.Listener {
                 val p = Paint()
 
                 override fun onDraw(c: Canvas) {
-                    c.drawColor(0xff151b1d.toInt())
+                    c.drawColor(color(com.google.android.material.R.attr.colorSurfaceContainerHighest))
                     val length = source.samples.size
                     p.color = accent()
                     p.strokeWidth = 1f
@@ -755,7 +646,7 @@ class MainActivity : Activity(), EngineController.Listener {
                             p,
                         )
                     }
-                    p.color = 0x553bcdbe
+                    p.color = (accent() and 0x00ffffff) or 0x33000000
                     c.drawRect(
                         (trim[0] / duration * width).toFloat(),
                         0f,
@@ -767,13 +658,11 @@ class MainActivity : Activity(), EngineController.Listener {
             }
         content.addView(waveform, LinearLayout.LayoutParams(-1, dp(64f)))
         content.addView(label("Trim start"))
-        val start = SeekBar(this)
-        start.max = 10000
+        val start = Slider(this).apply { valueTo = 10000f; contentDescription = "Trim start" }
         content.addView(start)
         content.addView(label("Trim end · maximum 7.38 seconds"))
-        val end = SeekBar(this)
-        end.max = 10000
-        end.progress = (trim[1] / duration * 10000).toInt()
+        val end = Slider(this).apply { valueTo = 10000f; contentDescription = "Trim end" }
+        end.value = (trim[1] / duration * 10000).toFloat()
         content.addView(end)
         val update = {
             position.text =
@@ -787,59 +676,32 @@ class MainActivity : Activity(), EngineController.Listener {
                 )
             waveform.invalidate()
         }
-        start.setOnSeekBarChangeListener(
-            object : SeekBar.OnSeekBarChangeListener {
-                override fun onStartTrackingTouch(b: SeekBar) {}
-
-                override fun onStopTrackingTouch(b: SeekBar) {}
-
-                override fun onProgressChanged(b: SeekBar, value: Int, user: Boolean) {
-                    if (!user) return
-                    trim[0] = min(duration - .001, value / 10000.0 * duration)
-                    trim[1] = max(trim[0] + .001, min(trim[1], trim[0] + 7.38))
-                    end.progress = (trim[1] / duration * 10000).toInt()
-                    update()
-                }
+        start.addOnChangeListener { _, value, user ->
+            if (user) {
+                trim[0] = min(duration - .001, value / 10000.0 * duration)
+                trim[1] = max(trim[0] + .001, min(trim[1], trim[0] + 7.38))
+                end.value = (trim[1] / duration * 10000).toFloat().coerceIn(0f, 10000f)
+                update()
             }
-        )
-        end.setOnSeekBarChangeListener(
-            object : SeekBar.OnSeekBarChangeListener {
-                override fun onStartTrackingTouch(b: SeekBar) {}
-
-                override fun onStopTrackingTouch(b: SeekBar) {}
-
-                override fun onProgressChanged(b: SeekBar, value: Int, user: Boolean) {
-                    if (!user) return
-                    trim[1] =
-                        max(
-                            trim[0] + .001,
-                            min(value / 10000.0 * duration, min(duration, trim[0] + 7.38)),
-                        )
-                    b.progress = (trim[1] / duration * 10000).toInt()
-                    update()
-                }
+        }
+        end.addOnChangeListener { slider, value, user ->
+            if (user) {
+                trim[1] = max(trim[0] + .001, min(value / 10000.0 * duration, min(duration, trim[0] + 7.38)))
+                slider.value = (trim[1] / duration * 10000).toFloat().coerceIn(0f, 10000f)
+                update()
             }
-        )
+        }
         val selectors = LinearLayout(this)
         content.addView(selectors)
-        val slot = Spinner(this)
-        slot.adapter =
-            ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("USR1", "USR2", "USR3", "USR4"),
-            )
-        selectors.addView(slot, LinearLayout.LayoutParams(0, dp(48f), 1f))
-        val root = EditText(this)
-        root.inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        root.setText("60")
-        root.hint = "Root MIDI 0–127"
-        selectors.addView(root, LinearLayout.LayoutParams(0, dp(48f), 1f))
+        val (slotField, slot) = dropdown("Sample slot", arrayOf("USR1", "USR2", "USR3", "USR4"))
+        selectors.addView(slotField, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(12f) })
+        val (rootField, root) = textField("Root MIDI 0–127", "60", true)
+        selectors.addView(rootField, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(label("Root note · MIDI 60 = C4"))
-        val normalize = CheckBox(this)
+        val normalize = MaterialCheckBox(this)
         normalize.text = "Normalize sample"
         content.addView(normalize)
-        val preview = Button(this)
+        val preview = MaterialButton(this)
         preview.text = "Audition selection"
         content.addView(preview)
         preview.setOnClickListener {
@@ -861,7 +723,7 @@ class MainActivity : Activity(), EngineController.Listener {
         }
         update()
         val dialog =
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle("Import WAV sample")
                 .setView(scroll)
                 .setNegativeButton("Cancel", null)
@@ -873,8 +735,8 @@ class MainActivity : Activity(), EngineController.Listener {
                 try {
                     val note = root.text.toString().toInt()
                     if (note !in 0..127) throw IOException("Choose a root note from 0 to 127.")
-                    AlertDialog.Builder(this)
-                        .setTitle("Replace USR${slot.selectedItemPosition+1}?")
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle("Replace USR${(slot.tag as Int)+1}?")
                         .setMessage(
                             "A recovery backup is saved first. The selected trim is converted to mono 22.05 kHz for SLOOP."
                         )
@@ -886,7 +748,7 @@ class MainActivity : Activity(), EngineController.Listener {
                                 trim[1],
                                 normalize.isChecked,
                                 note,
-                                slot.selectedItemPosition,
+                                (slot.tag as Int),
                             )
                             dialog.dismiss()
                         }
@@ -908,33 +770,23 @@ class MainActivity : Activity(), EngineController.Listener {
         val form = LinearLayout(this)
         form.orientation = LinearLayout.VERTICAL
         form.setPadding(dp(16f), dp(4f), dp(16f), dp(8f))
-        val mode = Spinner(this)
-        mode.adapter =
-            ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("Loop", "Whole song"),
-            )
-        form.addView(mode)
+        val (modeField, mode) = dropdown("Render", arrayOf("Loop", "Whole song"))
+        form.addView(modeField)
         form.addView(label("Loop music · 1–120 seconds"))
-        val seconds = EditText(this)
-        seconds.setText("15")
-        seconds.inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        form.addView(seconds)
+        val (secondsField, seconds) = textField("Music seconds", "15", true)
+        form.addView(secondsField)
         form.addView(label("Effect tail · 0–10 seconds"))
-        val tail = EditText(this)
-        tail.setText("2")
-        tail.inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        form.addView(tail)
+        val (tailField, tail) = textField("Tail seconds", "2", true)
+        form.addView(tailField)
         form.addView(
             label(
                 "Stereo WAV · 44.1 kHz · 16-bit PCM. Renders a separate copy; live work keeps playing. Whole song uses saved sections A–D, with a 30-minute limit."
             )
         )
         val dialog =
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle("Export audio")
-                .setView(form)
+                .setView(ScrollView(this).apply { addView(form) })
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Prepare WAV", null)
                 .create()
@@ -945,18 +797,11 @@ class MainActivity : Activity(), EngineController.Listener {
                     val effect = tail.text.toString().toInt()
                     if (duration !in 1..120 || effect !in 0..10)
                         throw IOException("Choose 1–120 music seconds and 0–10 tail seconds.")
-                    val song = mode.selectedItemPosition == 1
+                    val song = (mode.tag as Int) == 1
                     dialog.dismiss()
-                    val busy = ProgressDialog(this)
-                    busy.setTitle("Export audio")
-                    busy.setMessage("Rendering a separate copy…")
-                    busy.isIndeterminate = true
-                    busy.setCancelable(true)
-                    busy.setButton(ProgressDialog.BUTTON_NEGATIVE, "Cancel") { _, _ ->
+                    val busy = progressDialog("Export audio", "Rendering a separate copy…") {
                         engine.cancelExport()
                     }
-                    busy.setOnCancelListener { engine.cancelExport() }
-                    busy.show()
                     engine.exportAudio(song, duration, effect) callback@{ file, failure ->
                         busy.dismiss()
                         if (isFinishing || isDestroyed) {
@@ -989,7 +834,7 @@ class MainActivity : Activity(), EngineController.Listener {
     }
 
     private fun error(e: Exception) {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("File action")
             .setMessage(e.message ?: "The file action could not be completed.")
             .setPositiveButton("OK", null)

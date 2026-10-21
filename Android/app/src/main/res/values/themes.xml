@@ -1,0 +1,14 @@
+<resources>
+    <attr name="systemButtonStyle" format="reference"/>
+    <style name="Widget.FM1.SystemButton" parent="Widget.Material3.Button.TextButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:minWidth">48dp</item>
+    </style>
+    <style name="Theme.FM1" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="systemButtonStyle">@style/Widget.FM1.SystemButton</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowLightStatusBar">?attr/isLightTheme</item>
+        <item name="android:windowLightNavigationBar">?attr/isLightTheme</item>
+    </style>
+</resources>

@@ -22,3 +22,7 @@ packaged as the icon.
 
 Kotlin standard library 2.0.21: JetBrains and contributors, Apache-2.0.
 See licenses/LICENSE-kotlin-stdlib and licenses/NOTICE-kotlin-stdlib.
+
+Material Components for Android 1.13.0, AndroidX and Material icons:
+Android Open Source Project / Google / respective contributors, Apache-2.0.
+See licenses/NOTICE-android-ui and licenses/LICENSE-material-components.

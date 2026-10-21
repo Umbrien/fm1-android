@@ -30,3 +30,7 @@ local.properties
 
 # Pinned local Kotlin compiler/download cache
 .tools/
+
+# Android Gradle state
+.gradle/
+Android/app/build/

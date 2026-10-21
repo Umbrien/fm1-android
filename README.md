@@ -57,7 +57,7 @@ an explicit developer operation; the app never downloads or compiles engines.
 Validated build host: Apple Silicon macOS, Java 19/21, Rust, Python 3.12+, Android
 SDK platform 35/build-tools 35.0.0, NDK 27.2.12479018 and host LLVM 20. Linux NDK
 host discovery is supported but has not been validated. Kotlin 2.0.21 and its
-standard library are pinned by SHA256; firmware resource generation needs
+standard library are version-pinned; firmware resource generation needs
 build-only Pillow 13.0.0 with RAQM and fonttools. Exact generation-library versions and
 resource hashes are recorded in the lock files.
 
@@ -88,9 +88,13 @@ upgrading FreeType or RAQM.
 The shared crate retains its historical `fm1-ios-core` name to avoid ABI churn;
 there is no iOS frontend in this repository.
 
-The build bootstraps the exact Kotlin compiler into ignored `.tools/` and checks
-its archive SHA256. It bundles only `kotlin-stdlib.jar`, with its Apache-2.0
-notices; no reflection, coroutine, Gradle or Maven library is added.
+The Material 3 application shell follows system light/dark mode and uses Android
+wallpaper colors on supported devices, independently of the synth panel finish.
+The Gradle 8.13 wrapper verifies its distribution SHA256 and resolves pinned
+AGP 8.11.1, Kotlin 2.0.21, Material Components 1.13.0 and AndroidX dependencies.
+`Android/build.sh` still prepares native code, verifies firmware packages and
+signs the APK with the existing local development key. Gradle caches stay in
+ignored `.tools/gradle-home/`. First build requires network access.
 
 Output: `Android/build/FM1-android-arm64.apk`, signed using a locally generated,
 ignored development key/password. Preserve those local files for updates. An
@@ -103,7 +107,7 @@ adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 
-The SDK-only instrumentation app uses the same local signer. Fourteen default cases
+The instrumentation app uses the same local signer. Fifteen default cases
 exercise all engines, SLOOP files/audio, and real Activity input/lifecycle/state.
 The additional iOS exchange case is optional and requires explicit external test
 fixtures through `FM1_EXCHANGE_FIXTURES`; no private export is included. Tests

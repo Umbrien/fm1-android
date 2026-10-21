@@ -134,3 +134,33 @@ The new signed APK contains eleven pinned packages, passes signature and
 `ce757969b28062d1ff5a72381a74a8a67a1e6f67935208face23647057ae93a4`.
 The preceding ten-package APK hash above is historical. Physical-device
 validation and external iOS exchange fixtures remain outside this run.
+
+## Material 3 system shell — 2026-10-21
+
+The system shell now uses Material Components 1.13.0: buttons/icons, dialogs,
+outlined text fields, exposed dropdowns, trim sliders, checkbox and progress
+indicators. Material DayNight follows the system appearance; DynamicColors
+applies supported system palettes. Synth `PanelView` rendering and native engine
+sources are unchanged. Panel finish no longer controls shell colors.
+
+The Android shell now builds with the checksum-pinned Gradle 8.13 wrapper,
+AGP 8.11.1 and Kotlin 2.0.21. The existing native preparation, firmware hash
+checks and local signing identity are retained. Dependency versions are locked
+in `Android/app/gradle.lockfile`; Material/AndroidX notices are available in-app.
+
+Validation on the dedicated arm64 API 37 emulator:
+
+- All 15 default instrumentation cases passed in light mode (no external
+  exchange fixtures), including the new Material theme/form/finish-independence
+  checks and the existing engine/audio/project/touch/lifecycle/reset cases.
+- All three UI-only cases passed in dark mode. The theme check also confirmed
+  that Material's primary color matches Android's dynamic system primary.
+- Reviewed the shell and dialogs in light/dark mode, including the project-name
+  form and scrollable audio-export form. The final typography update was built,
+  signed, installed and visually checked in those forms.
+- APK signature and zip alignment checks passed. Light mode was restored after
+  validation. This does not establish physical-device acceptance or an older-OS
+  runtime fallback check.
+
+Local build logs, receipts and screenshots are retained under ignored
+`Android/build/material-ui/` and `Android/build/material-*.txt`.

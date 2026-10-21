@@ -1,0 +1,24 @@
+Material Components for Android 1.13.0
+Copyright The Android Open Source Project and Material Components contributors.
+https://github.com/material-components/material-components-android/tree/1.13.0
+Licensed under the Apache License, Version 2.0; see LICENSE-material-components.
+
+AndroidX libraries (including AppCompat, Core, Activity, Fragment, Lifecycle,
+SavedState, Collection and supporting libraries) are dependencies of Material.
+Copyright The Android Open Source Project and AndroidX contributors.
+https://android.googlesource.com/platform/frameworks/support/
+Licensed under the Apache License, Version 2.0; see LICENSE-material-components.
+The resolved runtime dependency versions are recorded by Gradle's dependency lock.
+
+The shell's vector icons use Material icon geometry.
+Copyright Google LLC. Apache License, Version 2.0.
+https://github.com/google/material-design-icons
+
+Kotlin coroutines 1.6.4 (transitive AndroidX runtime dependency):
+Copyright JetBrains s.r.o. and Kotlin Programming Language contributors.
+https://github.com/Kotlin/kotlinx.coroutines/tree/1.6.4
+Apache License, Version 2.0. Also see the Kotlin license text supplied here.
+
+JetBrains Java annotations 13.0 (transitive runtime dependency):
+Copyright JetBrains s.r.o. Apache License, Version 2.0.
+https://github.com/JetBrains/java-annotations

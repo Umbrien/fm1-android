@@ -2,7 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-source "$ROOT/scripts/kotlin-toolchain.sh"
+export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT/.tools/gradle-home}"
+export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$PWD/.tools/android-user}"
+mkdir -p "$ANDROID_USER_HOME"
+# The deprecated preference-root variable must not conflict with ANDROID_USER_HOME.
+unset ANDROID_SDK_HOME
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 NDK="${ANDROID_NDK_HOME:-$SDK/ndk/27.2.12479018}"
 TOOLS="$SDK/build-tools/35.0.0"
@@ -16,8 +20,7 @@ print(hosts[0])
 PYHOST
 )"
 CLANG="$NDK_HOST/bin/aarch64-linux-android26-clang"
-rm -rf "$OUT/classes" "$OUT/dex"
-mkdir -p "$OUT/classes" "$OUT/assets/engines" "$OUT/lib/arm64-v8a" "$OUT/dex"
+mkdir -p "$OUT/assets/engines" "$OUT/lib/arm64-v8a"
 if [[ "${1:-}" == "--core" ]]; then
  export ANDROID_NDK_HOME="$NDK"
  export FM1_NATIVE_CLIPPER="$ROOT/Research/NativeClipper/upstream-clipper"
@@ -42,16 +45,8 @@ for p in (root/'licenses').glob('*'):
  if p.is_file():shutil.copy2(p,notices/p.name)
 shutil.copy2(root/'LICENSE',notices/'LICENSE');shutil.copy2(root/'NOTICE',notices/'NOTICE')
 PY
-"$TOOLS/aapt2" compile --dir "$ROOT/Android/app/src/main/res" -o "$OUT/resources.zip"
-"$TOOLS/aapt2" link "$OUT/resources.zip" -I "$SDK/platforms/android-35/android.jar" --manifest "$ROOT/Android/app/src/main/AndroidManifest.xml" --min-sdk-version 26 --target-sdk-version 35 --version-code 2 --version-name 0.2.0 -A "$OUT/assets" -o "$OUT/base.apk"
-find "$ROOT/Android/app/src/main/kotlin" -name '*.kt' > "$OUT/sources.txt"
-"$KOTLIN_HOME/bin/kotlinc" -jvm-target 1.8 -no-reflect -module-name fm1main -cp "$SDK/platforms/android-35/android.jar" -d "$OUT/classes" @"$OUT/sources.txt"
-find "$OUT/classes" -name '*.class' > "$OUT/classes.txt"
-"$TOOLS/d8" --min-api 26 --lib "$SDK/platforms/android-35/android.jar" --output "$OUT/dex" @"$OUT/classes.txt" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"
-cp "$OUT/base.apk" "$OUT/unsigned.apk"
-(cd "$OUT/dex" && zip -q "$OUT/unsigned.apk" classes.dex)
-(cd "$OUT" && zip -q -r unsigned.apk lib)
-"$TOOLS/zipalign" -p -f 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
-"$ROOT/Android/signing.sh" "$OUT/aligned.apk" "$OUT/FM1-android-arm64.apk"
+# Gradle merges Material/AndroidX resources and compiles the Kotlin shell.
+"$ROOT/Android/gradlew" -p "$ROOT/Android" --project-cache-dir "$ROOT/Android/.gradle" --console=plain assembleDebug
+"$ROOT/Android/signing.sh" "$ROOT/Android/app/build/outputs/apk/debug/app-debug-unsigned.apk" "$OUT/FM1-android-arm64.apk"
 "$TOOLS/apksigner" verify --verbose "$OUT/FM1-android-arm64.apk"
 echo "Built: $OUT/FM1-android-arm64.apk"

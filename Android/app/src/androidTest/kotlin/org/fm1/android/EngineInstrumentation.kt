@@ -866,6 +866,75 @@ class EngineInstrumentation : Instrumentation() {
         }
     }
 
+    private fun materialSystemUi(): JSONObject {
+        val activity = startActivitySync(Intent(targetContext, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+        var night = false
+        try {
+            waitForIdleSync()
+            runOnMainSync {
+                val surface = com.google.android.material.color.MaterialColors.getColor(activity,
+                    com.google.android.material.R.attr.colorSurface, "test")
+                val foreground = com.google.android.material.color.MaterialColors.getColor(activity,
+                    com.google.android.material.R.attr.colorOnSurface, "test")
+                val primary = com.google.android.material.color.MaterialColors.getColor(activity,
+                    androidx.appcompat.R.attr.colorPrimary, "test")
+                require(androidx.core.graphics.ColorUtils.calculateContrast(foreground, surface) >= 4.5,
+                    "system text lacks accessible surface contrast")
+                night = activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+                require((androidx.core.graphics.ColorUtils.calculateLuminance(surface) < 0.5) == night,
+                    "Material surface does not follow system light/dark mode")
+                if (android.os.Build.VERSION.SDK_INT >= 34 &&
+                    com.google.android.material.color.DynamicColors.isDynamicColorAvailable()) {
+                    val expected = activity.getColor(if (night) android.R.color.system_primary_dark
+                        else android.R.color.system_primary_light)
+                    require(primary == expected, "Material primary does not match the system dynamic palette")
+                }
+                for (name in arrayOf("firmware", "transport", "mute", "folder", "collapse")) {
+                    val button = field(activity, name)
+                    require(button is com.google.android.material.button.MaterialButton,
+                        "$name is not a Material button")
+                }
+                val originalFinish = field(activity, "finish") as Int
+                val finishField = MainActivity::class.java.getDeclaredField("finish").apply { isAccessible = true }
+                val apply = MainActivity::class.java.getDeclaredMethod("applyFinish").apply { isAccessible = true }
+                try {
+                    finishField.setInt(activity, (originalFinish + 1) % 6)
+                    apply.invoke(activity)
+                    val firmware = field(activity, "firmware") as com.google.android.material.button.MaterialButton
+                    require(firmware.currentTextColor == primary, "panel finish changed shell text color")
+                } finally {
+                    finishField.setInt(activity, originalFinish)
+                    apply.invoke(activity)
+                }
+                MainActivity::class.java.getDeclaredMethod("chooseFinish").apply { isAccessible = true }.invoke(activity)
+                val dialog = field(activity, "finishDialog") as androidx.appcompat.app.AlertDialog
+                require(dialog.listView.count == 6 && dialog.listView.checkedItemPosition == originalFinish,
+                    "Material panel selector lost selection or finishes")
+                dialog.dismiss()
+                val fieldMethod = MainActivity::class.java.getDeclaredMethod("textField", String::class.java,
+                    String::class.java, Boolean::class.javaPrimitiveType).apply { isAccessible = true }
+                val input = fieldMethod.invoke(activity, "Root note", "60", true) as Pair<*, *>
+                require(input.first is com.google.android.material.textfield.TextInputLayout &&
+                    input.second is com.google.android.material.textfield.TextInputEditText,
+                    "form does not use Material text fields")
+                val dropdownMethod = MainActivity::class.java.getDeclaredMethod("dropdown", String::class.java,
+                    Array<String>::class.java).apply { isAccessible = true }
+                val dropdown = dropdownMethod.invoke(activity, "Render", arrayOf("Loop", "Whole song")) as Pair<*, *>
+                require(dropdown.second is com.google.android.material.textfield.MaterialAutoCompleteTextView,
+                    "selector does not use a Material exposed dropdown")
+            }
+            return JSONObject().put("nightMode", night).put("finishIndependent", true)
+                .put("materialDialogsAndFields", true)
+        } finally {
+            val controller = field(activity, "engine") as EngineController
+            runOnMainSync { activity.finish() }
+            waitForIdleSync()
+            (field(controller, "workerThread") as Thread).join(10000)
+        }
+    }
+
     private fun runChecks() {
         if (!uiOnly) {
             for (kind in 2..10) check("engine-$kind") { engine(kind) }
@@ -874,6 +943,7 @@ class EngineInstrumentation : Instrumentation() {
             check("sloop-workspace-sample-loop-song", ::workspace)
             if (exchangeTests) check("cross-platform-workspace", ::crossPlatform)
         }
+        check("material-system-ui", ::materialSystemUi)
         check("activity-multitouch-audio-lifecycle-persistence", ::activity)
         check("firmware-factory-reset-persistence", ::firmwareReset)
         val result = Bundle()
