@@ -20,11 +20,13 @@ import org.json.*
 class EngineInstrumentation : Instrumentation() {
     private val results = JSONArray()
     private var failures = 0
+    private var compilerOnly = false
     private var uiOnly = false
     private var exchangeTests = false
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
+        compilerOnly = arguments?.getString("compilerOnly") == "true"
         uiOnly = arguments?.getString("uiOnly") == "true"
         exchangeTests = arguments?.getString("exchange") == "true"
         Thread(::runChecks, "fm1-instrumentation").start()
@@ -155,10 +157,116 @@ class EngineInstrumentation : Instrumentation() {
             require(pixels.count { it != pixels[0] } > 20, "blank stock LCD")
             require(NativeEngine.flash(m).size == 1048576, "wrong stock flash size")
             val elapsed = SystemClock.elapsedRealtime() - start
-            return JSONObject().put("kind", kind).put("backend", "interpreter")
+            return JSONObject().put("kind", kind).put("backend", NativeEngine.backend(m)).put("compiledInstructions", NativeEngine.jitInstructions(m))
                 .put("frames", frames).put("elapsedMs", elapsed).put("peak", peak)
                 .also { if (kind == 12) it.put("soundModes", fm1vaSoundModes()) }
         } finally { NativeEngine.destroy(m) }
+    }
+
+    private fun compiledFirmware(): JSONObject {
+        val runs = JSONArray()
+        // Exercise original packages through the binary path, including two source-native
+        // catalogue entries. No catalogue-based dispatch can satisfy these checks.
+        for (kind in intArrayOf(11, 12, 3, 4)) {
+            val bytes = asset(kind)
+            val compiled = NativeEngine.createBinary(bytes, true)
+            val reference = NativeEngine.createBinary(bytes, false)
+            try {
+                require(NativeEngine.kind(compiled) == 13, "import did not use binary engine")
+                val a = FloatArray(1024)
+                val b = FloatArray(1024)
+                var compiledNs = 0L
+                var referenceNs = 0L
+                var samples = 0L
+                repeat(220) { step ->
+                    if (step == 180) for (m in longArrayOf(compiled, reference)) NativeEngine.key(m, 21, true)
+                    var start = System.nanoTime()
+                    val na = NativeEngine.render(compiled, a, 512)
+                    compiledNs += System.nanoTime() - start
+                    start = System.nanoTime()
+                    val nb = NativeEngine.render(reference, b, 512)
+                    referenceNs += System.nanoTime() - start
+                    require(na == nb && a.contentEquals(b), "kind $kind PCM mismatch at $step")
+                    samples += na
+                }
+                require(NativeEngine.backend(compiled) == 3 && NativeEngine.jitInstructions(compiled) > 0,
+                    "ARM64 code did not execute")
+                require(NativeEngine.backend(reference) == 1 && NativeEngine.jitInstructions(reference) == 0L,
+                    "reference compiled unexpectedly")
+                require(NativeEngine.flash(compiled).contentEquals(NativeEngine.flash(reference)), "flash mismatch")
+                val pa = IntArray(57600); val pb = IntArray(57600)
+                NativeEngine.snapshot(compiled, pa, FloatArray(41))
+                NativeEngine.snapshot(reference, pb, FloatArray(41))
+                require(pa.contentEquals(pb), "LCD mismatch")
+                runs.put(JSONObject().put("kind", kind).put("frames", samples)
+                    .put("compiledMs", compiledNs / 1e6).put("referenceMs", referenceNs / 1e6)
+                    .put("compiledInstructions", NativeEngine.jitInstructions(compiled)))
+            } finally { NativeEngine.destroy(compiled); NativeEngine.destroy(reference) }
+        }
+        // Package validation, identity-based storage, corruption detection, and reload.
+        val library = FirmwareLibrary(targetContext)
+        val bytes = asset(11)
+        val first = library.identify(bytes, "../../user firmware.fwsc")
+        library.store(first, bytes)
+        require(library.bytes(first.id).contentEquals(bytes), "import package reload mismatch")
+        require(library.identify(bytes, "renamed.fwsc").id == first.id, "filename changed identity")
+        val second = library.identify(asset(12), first.name)
+        require(second.id != first.id, "different packages share an identity")
+        var rejected = false
+        try { NativeEngine.createBinary(ByteArray(1000), true).also { NativeEngine.destroy(it) } }
+        catch (_: IllegalStateException) { rejected = true }
+        require(rejected, "malformed firmware accepted")
+        rejected = false
+        try { library.bytes("../outside") } catch (_: IOException) { rejected = true }
+        require(rejected, "invalid library identity accepted")
+        // Exercise the same URI import, switch, failure recovery, reset and reopen path as UI.
+        val fixture = File(targetContext.cacheDir, "compiler-import.fwsc").apply { writeBytes(bytes) }
+        lateinit var controller: EngineController
+        runOnMainSync { controller = EngineController(targetContext); controller.setPaused(true) }
+        fun onWorker(action: () -> Unit) {
+            val done = CountDownLatch(1); var failure: Throwable? = null
+            (field(controller, "worker") as Handler).post {
+                try { action() } catch (e: Throwable) { failure = e } finally { done.countDown() }
+            }
+            require(done.await(20, TimeUnit.SECONDS), "import worker timed out")
+            failure?.let { throw it }
+        }
+        try {
+            barrier(controller)
+            controller.importFirmware(android.net.Uri.fromFile(fixture), "User stock.fwsc")
+            barrier(controller)
+            require(controller.selectedKind == 13 && controller.selectedFirmwareId == first.id,
+                "URI import failed: ${controller.status}")
+            require(controller.compiledInstructions > 0, "import had no compiled execution")
+            var marker = 0.toByte()
+            onWorker {
+                val handle = field(controller, "machine") as Long
+                val flash = NativeEngine.flash(handle)
+                marker = (flash.last().toInt() xor 0x25).toByte(); flash[flash.lastIndex] = marker
+                require(NativeEngine.restore(handle, flash), "cannot edit imported state")
+            }
+            controller.selectEngine(2); barrier(controller)
+            require(controller.selectedFirmwareId == null && controller.selectedKind == 2, "native switch failed")
+            controller.selectFirmware(first.id); barrier(controller)
+            onWorker { require(NativeEngine.flash(field(controller, "machine") as Long).last() == marker, "import lost save") }
+            fixture.writeBytes(ByteArray(1000))
+            controller.importFirmware(android.net.Uri.fromFile(fixture), "Bad.fwsc"); barrier(controller)
+            require(controller.selectedFirmwareId == first.id && field(controller, "ready") == true,
+                "invalid import replaced the running instrument")
+            controller.close()
+            val closeDeadline = SystemClock.elapsedRealtime() + 20000
+            while (field(controller, "closed") != true && SystemClock.elapsedRealtime() < closeDeadline) SystemClock.sleep(10)
+            require(field(controller, "closed") == true, "import controller did not close")
+            runOnMainSync { controller = EngineController(targetContext); controller.setPaused(true) }
+            barrier(controller)
+            require(controller.selectedFirmwareId == first.id, "import selection did not survive restart")
+            onWorker { require(NativeEngine.flash(field(controller, "machine") as Long).last() == marker, "restart lost save") }
+            controller.resetFirmware(13, first.id); barrier(controller)
+            require(controller.selectedFirmwareId == first.id, "reset changed imported firmware")
+            onWorker { require(NativeEngine.flash(field(controller, "machine") as Long).last() != marker, "reset kept old save") }
+            controller.selectEngine(2); barrier(controller)
+        } finally { controller.close(); fixture.delete() }
+        return JSONObject().put("runs", runs).put("storageAndRejection", true)
     }
 
     private fun fm1vaSoundModes(): JSONArray {
@@ -490,7 +598,7 @@ class EngineInstrumentation : Instrumentation() {
     private fun barrier(controller: EngineController) {
         val done = CountDownLatch(1)
         (field(controller, "worker") as Handler).post { done.countDown() }
-        require(done.await(10, TimeUnit.SECONDS), "engine worker did not settle")
+        require(done.await(20, TimeUnit.SECONDS), "engine worker did not settle")
     }
 
     private fun firmwareReset(): JSONObject {
@@ -936,16 +1044,20 @@ class EngineInstrumentation : Instrumentation() {
     }
 
     private fun runChecks() {
+        if (compilerOnly) check("compiler-binary-parity-and-import", ::compiledFirmware)
+        else {
         if (!uiOnly) {
             for (kind in 2..10) check("engine-$kind") { engine(kind) }
             check("engine-11-stock") { interpretedEngine(11) }
             check("engine-12-fm1va") { interpretedEngine(12) }
+            check("compiler-binary-parity-and-import", ::compiledFirmware)
             check("sloop-workspace-sample-loop-song", ::workspace)
             if (exchangeTests) check("cross-platform-workspace", ::crossPlatform)
         }
         check("material-system-ui", ::materialSystemUi)
         check("activity-multitouch-audio-lifecycle-persistence", ::activity)
         check("firmware-factory-reset-persistence", ::firmwareReset)
+        }
         val result = Bundle()
         try {
             val receipt =

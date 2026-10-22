@@ -16,6 +16,17 @@ JNIEXPORT jlong JNICALL JNI(create)(JNIEnv* e,jclass c,jbyteArray data,jint requ
  if(instrument_kind(m)!=(uint32_t)required){instrument_destroy(m);fail(e,"Instrument identity mismatch.");return 0;}
  return (jlong)(uintptr_t)m;
 }
+JNIEXPORT jlong JNICALL JNI(createBinary)(JNIEnv* e,jclass c,jbyteArray data,jboolean jit){
+ (void)c;jsize size=(*e)->GetArrayLength(e,data);
+ if(size<960||size>4*1024*1024){fail(e,"Invalid firmware size (960 bytes to 4 MiB).");return 0;}
+ jbyte* bytes=(*e)->GetByteArrayElements(e,data,NULL);if(!bytes)return 0;
+ uint8_t error[512]={0};void* m=instrument_create_binary((uint8_t*)bytes,size,jit,error,sizeof(error));
+ (*e)->ReleaseByteArrayElements(e,data,bytes,JNI_ABORT);
+ if(!m)fail(e,error[0]?(char*)error:"Unsupported firmware package.");
+ return (jlong)(uintptr_t)m;
+}
+JNIEXPORT jlong JNICALL JNI(jitInstructions)(JNIEnv*e,jclass c,jlong handle){return instrument_jit_instructions(H);}
+JNIEXPORT jint JNICALL JNI(backend)(JNIEnv*e,jclass c,jlong handle){return instrument_backend(H);}
 JNIEXPORT void JNICALL JNI(destroy)(JNIEnv*e,jclass c,jlong handle){instrument_destroy(H);}
 JNIEXPORT jint JNICALL JNI(kind)(JNIEnv*e,jclass c,jlong handle){return instrument_kind(H);}
 JNIEXPORT jint JNICALL JNI(render)(JNIEnv*e,jclass c,jlong handle,jfloatArray pcm,jint frames){if(frames<1||frames>2048||(*e)->GetArrayLength(e,pcm)<frames*2)return 0;jfloat* out=(*e)->GetFloatArrayElements(e,pcm,NULL);int n=instrument_render(H,out,frames);(*e)->ReleaseFloatArrayElements(e,pcm,out,0);if(instrument_halted(H))fail(e,"Firmware emulation stopped after an execution error.");return n;}

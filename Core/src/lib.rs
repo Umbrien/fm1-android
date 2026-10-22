@@ -1,4 +1,4 @@
-//! Shared instance-based C ABI. Android admits exact pinned firmware packages.
+//! Shared instance-based C ABI. Android supports pinned source engines and imported FM-1 packages.
 //! The host serializes all calls per instance.
 //! CPU and peripheral implementation: Joakim Eriksson, MIT (Vendor/LICENSE-fm1-emu).
 use fm1_core::{Bus, Cpu};
@@ -10,7 +10,7 @@ use std::{
 mod project_io;
 const RAM: usize = 1 << 20;
 const MAX_PACKAGE: usize = 4 << 20;
-// Stock V15 runs the original PI32v2 package in the interpreter, with no JIT.
+// Known binary identities retain their catalogue IDs; imported binaries use ID 13.
 const STOCK_SIZE: usize = 699956;
 const STOCK_SHA256: [u8; 32] = [
     219, 22, 66, 178, 182, 250, 92, 44, 204, 177, 31, 253, 19, 135, 128, 104, 187, 40, 96, 22, 120,
@@ -67,19 +67,22 @@ impl Interpreter {
     pub fn static_kernel_blocks(&self) -> String {
         self.cpu.static_kernel_blocks()
     }
-    fn load(bytes: &[u8]) -> Result<Self, String> {
+    fn load(bytes: &[u8], jit: bool) -> Result<Self, String> {
         if !(960..=MAX_PACKAGE).contains(&bytes.len()) {
             return Err("Package size is invalid (960 bytes to 4 MiB).".into());
         }
         let fw = fm1_soc::stock_from_package(bytes, None)?;
-        if fw.board != Board::Fm1 {
-            return Err("This package targets SMK-37, not FM-1.".into());
+        if fw.board != Board::Fm1 || !fw.identity.to_ascii_uppercase().starts_with("FM-1") {
+            return Err("This package does not identify an FM-1 firmware.".into());
+        }
+        if fw.flash.len() != RAM {
+            return Err("Unsupported flash size; this runtime models a 1 MiB FM-1.".into());
         }
         let mut soc = Soc::new(RAM, fw.xip);
         soc.periph.hz = 240_000_000;
         soc.periph.skip_idle = true;
         let mut cpu = Cpu::new(fw.entry);
-        cpu.jit_on = false; // Interpreter-only firmware: no executable-memory/JIT dependency.
+        cpu.jit_on = jit;
         cpu.user = true;
         let params = 0x01c0_0000 + 0x7fc00;
         soc.write32(params, params + 0x40);
@@ -92,7 +95,7 @@ impl Interpreter {
             tick: false,
             audio: VecDeque::new(),
             halted: false,
-            kind: interpreted_kind(bytes),
+            kind: match interpreted_kind(bytes) { 0 => 13, kind => kind },
         })
     }
     fn render(&mut self, out: &mut [f32], budget: u32) -> usize {
@@ -109,7 +112,8 @@ impl Interpreter {
                 tick,
                 ..
             } = self;
-            if machine::run_dual(cpu1, soc, 20_000, RAM, false, |s, n| {
+            let jit = cpu.jit_on;
+            if machine::run_dual(cpu1, soc, 20_000, RAM, jit, |s, n| {
                 machine::run_blocks(cpu, s, n, tick)
             })
             .is_err()
@@ -186,7 +190,7 @@ impl Instrument {
                 return native_sloop::Native::with_api(&fw.flash, api).map(Self::Native);
             }
         }
-        Interpreter::load(bytes).map(Self::Interpreter)
+        Interpreter::load(bytes, cfg!(all(target_arch = "aarch64", target_os = "android"))).map(Self::Interpreter)
     }
     pub fn static_kernel_blocks(&self) -> String {
         match self {
@@ -224,12 +228,12 @@ unsafe fn error_text(error: *mut u8, cap: usize, text: &str) {
         *error.add(n) = 0;
     }
 }
-/// Execution backend: 0 absent, 1 interpreted binary, 2 exact pinned source-native engine.
+/// Execution backend: 0 absent, 1 interpreted/warming binary, 2 source-native, 3 ARM64 JIT executed.
 #[no_mangle]
 pub unsafe extern "C" fn instrument_backend(m: *const Instrument) -> u32 {
     match m.as_ref() {
         None => 0,
-        Some(Instrument::Interpreter(_)) => 1,
+        Some(Instrument::Interpreter(m)) => if m.cpu.jit_insns + m.cpu1.as_ref().map_or(0, |c| c.jit_insns) > 0 { 3 } else { 1 },
         #[cfg(any(
             fm1_native_sloop,
             fm1_native_family,
@@ -239,6 +243,30 @@ pub unsafe extern "C" fn instrument_backend(m: *const Instrument) -> u32 {
             fm1_native_skiff
         ))]
         Some(Instrument::Native(_)) => 2,
+    }
+}
+/// Cumulative guest instructions actually executed by generated machine code.
+#[no_mangle]
+pub unsafe extern "C" fn instrument_jit_instructions(m: *const Instrument) -> u64 {
+    match m.as_ref() {
+        Some(Instrument::Interpreter(m)) => m.cpu.jit_insns + m.cpu1.as_ref().map_or(0, |c| c.jit_insns),
+        _ => 0,
+    }
+}
+/// Import always executes the supplied binary, even if a source-native counterpart exists.
+/// `jit = false` is the reference path used by differential tests.
+#[no_mangle]
+pub unsafe extern "C" fn instrument_create_binary(
+    data: *const u8, len: usize, jit: bool, error: *mut u8, cap: usize,
+) -> *mut Instrument {
+    if data.is_null() || !(960..=MAX_PACKAGE).contains(&len) {
+        error_text(error, cap, "Invalid firmware size (960 bytes to 4 MiB).");
+        return std::ptr::null_mut();
+    }
+    match catch_unwind(|| Interpreter::load(std::slice::from_raw_parts(data, len), jit)) {
+        Ok(Ok(mut m)) => { m.kind = 13; Box::into_raw(Box::new(Instrument::Interpreter(m))) }
+        Ok(Err(e)) => { error_text(error, cap, &e); std::ptr::null_mut() }
+        Err(_) => { error_text(error, cap, "Damaged or unsupported firmware package."); std::ptr::null_mut() }
     }
 }
 /// Source-native kind linked into this build, selected by exact package hash.
@@ -863,6 +891,57 @@ mod stock_tests {
             );
             instrument_destroy(reopened);
             instrument_destroy(m);
+        }
+    }
+}
+
+#[cfg(test)]
+mod compiler_tests {
+    use super::*;
+
+    #[test]
+    fn binary_compiler_matches_reference_firmware_audio_display_and_flash() {
+        let Some(paths) = std::env::var_os("FM1_COMPILER_PACKAGES") else { return; };
+        for path in std::env::split_paths(&paths) {
+            let bytes = std::fs::read(&path).unwrap();
+            let mut reference = Interpreter::load(&bytes, false).unwrap();
+            let mut compiled = Interpreter::load(&bytes, true).unwrap();
+            let (mut a, mut b) = ([0f32; 1024], [0f32; 1024]);
+            let (mut reference_time, mut compiled_time) = (std::time::Duration::ZERO, std::time::Duration::ZERO);
+            for step in 0..300 {
+                if step == 200 {
+                    for engine in [&mut reference, &mut compiled] {
+                        engine.soc.periph.apply(&Action::Key { id: 21, down: true });
+                    }
+                }
+                let start = std::time::Instant::now();
+                let n = reference.render(&mut a, 4_000_000);
+                reference_time += start.elapsed();
+                let start = std::time::Instant::now();
+                let m = compiled.render(&mut b, 4_000_000);
+                compiled_time += start.elapsed();
+                assert!(!reference.halted && !compiled.halted, "{}: halt at {step}", path.display());
+                assert_eq!(n, m, "{}: frame count at {step}", path.display());
+                assert!(a == b, "{}: PCM at {step}, first mismatch {:?}", path.display(), a.iter().zip(b).position(|(a,b)| *a != b));
+            }
+            let compiled = Box::into_raw(Box::new(Instrument::Interpreter(compiled)));
+            let reference = Box::into_raw(Box::new(Instrument::Interpreter(reference)));
+            unsafe {
+                assert!(instrument_jit_instructions(compiled) > 0, "no ARM64 execution");
+                assert_eq!(instrument_backend(compiled), 3);
+                let (mut pa, mut pb) = (vec![0u32; 57600], vec![0u32; 57600]);
+                let (mut la, mut lb) = ([0f32; 41], [0f32; 41]);
+                instrument_snapshot(reference, pa.as_mut_ptr(), la.as_mut_ptr());
+                instrument_snapshot(compiled, pb.as_mut_ptr(), lb.as_mut_ptr());
+                assert_eq!(pa, pb, "LCD");
+                assert_eq!(la, lb, "LEDs");
+                let (mut fa, mut fb) = (vec![0u8; RAM], vec![0u8; RAM]);
+                instrument_flash(reference, fa.as_mut_ptr(), RAM);
+                instrument_flash(compiled, fb.as_mut_ptr(), RAM);
+                assert_eq!(fa, fb, "flash");
+                eprintln!("{}: reference={reference_time:?} compiled={compiled_time:?} jit_insns={}", path.display(), instrument_jit_instructions(compiled));
+                instrument_destroy(reference); instrument_destroy(compiled);
+            }
         }
     }
 }

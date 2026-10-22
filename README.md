@@ -18,14 +18,25 @@ No account, telemetry or network permission is required by the app.
 | FoMni | 0.4 | 8 |
 | Jangada | 1.0.1 | 9 |
 | Clipper (experimental) | 1.1-experimental | 10 |
-| M-VAVE Stock (emulated) | V15 | 11 (interpreter) |
-| FM-1+VA (emulated) | 102 | 12 (interpreter) |
+| M-VAVE Stock (recompiled) | V15 | 11 (ARM64 JIT) |
+| FM-1+VA (recompiled) | 102 | 12 (ARM64 JIT) |
 
-Only exact packages matching the pinned firmware catalogue are admitted by the
-Android bridge. There is no arbitrary firmware loader, runtime source compiler
-or JIT in the consumer flow. Stock V15 and FM-1+VA run their original packages in the attributed PI32v2 interpreter without JIT.
-Each has separate saves and remains experimental; real-time playback is not guaranteed.
-Unsupported packages cannot enter that route through the app.
+Use **Instruments → Open .fwsc…** to import an FM-1 firmware from local storage.
+The app unpacks the original binary and compiles hot PI32 instruction blocks to
+ARM64 on the device. Imported packages are copied into a private library; their
+SHA-256 identities keep different firmware versions' saves separate. Reopening a
+package with another filename reuses its state. Imports are size/structure checked
+and must produce audio and execute compiled code during a bounded startup before
+replacing the current instrument. Failed imports preserve the current instrument.
+
+The nine bundled source-native instruments still use their pinned C/Rust builds.
+Stock V15, FM-1+VA and imports use the ARM64 JIT with the existing hardware model
+and interpreter for instructions that cannot be compiled. This is binary
+recompilation, not conversion back to source: firmware compatibility and real-time
+speed are not guaranteed. Unsupported CPU instructions or hardware can stop a
+firmware. Only FM-1 packages with the supported 1 MiB flash layout are accepted;
+SMK-37 packages are rejected. Original packages and saves persist; generated code
+stays in memory and recompiles after restart. See [compiler details and validation](docs/compiler.md).
 FM1 Open uses its portable source preview, may differ from hardware, and lacks
 the original factory sound bank.
 
@@ -52,7 +63,8 @@ identify SLOOP 2.8. Older apps may reject these newer exports.
 
 The source repository includes no firmware binaries, generated firmware assets,
 APKs, signing credentials or upstream firmware checkouts. Build preparation is
-an explicit developer operation; the app never downloads or compiles engines.
+an explicit developer operation. The app never downloads firmware or builds source
+engines; its built-in binary compiler works locally on imported packages.
 
 Validated build host: Apple Silicon macOS, Java 19/21, Rust, Python 3.12+, Android
 SDK platform 35/build-tools 35.0.0, NDK 27.2.12479018 and host LLVM 20. Linux NDK
@@ -107,7 +119,7 @@ adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 
-The instrumentation app uses the same local signer. Fifteen default cases
+The instrumentation app uses the same local signer. Sixteen default cases
 exercise all engines, SLOOP files/audio, and real Activity input/lifecycle/state.
 The additional iOS exchange case is optional and requires explicit external test
 fixtures through `FM1_EXCHANGE_FIXTURES`; no private export is included. Tests

@@ -48,12 +48,12 @@ M-VAVE Stock V15 uses the unmodified 699956-byte recovery package from
 `db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a`.
 The publisher identifies the recovery resource as Apache-2.0; its complete
 component notice is bundled in `licenses/NOTICE-stock-v15`. It executes through
-the reference interpreter, separately from all source-native engines.
+the PI32v2 runtime with ARM64 JIT on Android, separately from all source-native engines.
 
 FM-1+VA Version 102 is the original binary published by baud girl / Madeline
 at https://baudgirl.com/work/FM-1+VA/install (2026-10-19). The 859700-byte
 package SHA256 `7b169a69b30570581d0ebc7b44851e3e08898d2956ade155363bcf18fac5c348`
-matches that installer’s published metadata. It is interpreted as kind 12,
+matches that installer’s published metadata. It executes as binary kind 12,
 with separate 1 MiB flash. No FM-1+VA source or optional preset pack is vendored.
 The inspected official pages do not specify firmware redistribution terms;
 `licenses/NOTICE-fm1va` retains attribution without treating the host’s license

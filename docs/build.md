@@ -190,7 +190,7 @@ light/dark setting to validate both modes.
 
 The app must already be built/installed. The script wakes the dedicated emulator
 and dismisses its keyguard before injecting real touch events. Default tests need only the exact
-engine package assets already in the app and exercise fifteen core/UI cases, including
+engine package assets already in the app and exercise sixteen core/UI cases, including
 factory reset persistence for all eleven firmware entries. The
 receipt explicitly records that external exchange fixtures were not supplied.
 Optional cross-platform testing uses a caller-provided directory containing
@@ -216,8 +216,19 @@ Without those environment variables, native-only test cases are conditional and
 are not evidence for nine-native-engine compatibility.
 
 Set `FM1_STOCK_PACKAGE="$PWD/Research/Stock/FM-1_015.fwsc"` for the host
-stock V15 boot/sound/flash test. Stock runs in the interpreter, with no JIT.
+stock V15 boot/sound/flash test. The host default uses the interpreter; Android enables the ARM64 JIT.
 
 Set `FM1_VA_PACKAGE="$PWD/Research/FM1VA/FM-1+VA-102.fwsc"` for the
 FM-1+VA host interpreter boot/sound/flash test. Its exact package is fetched by
 `scripts/prepare.py`; the app does not download it at runtime.
+
+Compiler differential checks (Apple Silicon host, original local packages):
+
+```sh
+FM1_COMPILER_PACKAGES="$PWD/Research/Stock/FM-1_015.fwsc:$PWD/Research/FM1VA/FM-1+VA-102.fwsc:$PWD/Research/NativeFamily/felucca-1.6.1.fwsc:$PWD/Research/NativeFamily/x0x-1.1.0.fwsc" cargo test -p fm1-ios-core --release compiler_tests -- --nocapture
+FM1_COMPILER_ONLY=true ./Android/test.sh
+```
+
+The device compiler case compares compiled execution against the interpreter and
+exercises package import, state isolation, restart, reset and failed-import recovery.
+It requires an installed APK from the current build and a dedicated arm64 emulator.

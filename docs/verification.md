@@ -202,3 +202,13 @@ Local evidence is under ignored `target/skiff-1.4-host/`,
 `Android/build/skiff-1.4-*`. The adapter retains its existing single-core FM-1
 host mapping; this update does not add SMK-37 hardware, USB/editor or physical
 second-core support, and does not establish hardware parity.
+
+## On-device ARM64 compiler and firmware import — 2026-10-22
+
+The earlier interpreter-only Android restriction is superseded by local `.fwsc`
+import and ARM64 JIT execution. All 16 Android instrumentation cases and 40
+Android core tests passed in a separate API 37 arm64 emulator. Four original
+firmwares were compared against the reference interpreter; imports were checked
+through restart, reset, failed replacement and native-engine switching.
+See [compiler.md](compiler.md) for the exact validation boundary, measured speed,
+current limitations and receipt location. Earlier entries above remain historical.

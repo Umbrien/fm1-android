@@ -8,6 +8,12 @@ internal object NativeEngine {
 
     @JvmStatic external fun create(packageBytes: ByteArray, requiredKind: Int): Long
 
+    @JvmStatic external fun createBinary(packageBytes: ByteArray, jit: Boolean): Long
+
+    @JvmStatic external fun jitInstructions(handle: Long): Long
+
+    @JvmStatic external fun backend(handle: Long): Int
+
     @JvmStatic external fun destroy(handle: Long)
 
     @JvmStatic external fun kind(handle: Long): Int

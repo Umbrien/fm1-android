@@ -34,3 +34,6 @@ int32_t instrument_sloop_commit(void *m);
 uint32_t instrument_kind_for_fwsc(const uint8_t*, size_t);
 uint32_t instrument_kind(const void*);
 bool instrument_halted(const void*);
+
+void *instrument_create_binary(const uint8_t *, size_t, bool, uint8_t *, size_t);
+uint64_t instrument_jit_instructions(const void *);

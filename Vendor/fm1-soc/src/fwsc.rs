@@ -98,7 +98,7 @@ pub fn container(file: &[u8]) -> (usize, String) {
     while end > 0 && marker(end - 1) == Some(0x7d) {
         end -= 1;
     }
-    let identity = (0..end).filter_map(|i| marker(i).map(|m| m.wrapping_sub(i as u8 + 1) as char)).collect();
+    let identity = (0..end).filter_map(|i| marker(i).map(|m| m.wrapping_sub((i as u8).wrapping_add(1)) as char)).collect();
     (n, identity)
 }
 
@@ -134,7 +134,7 @@ fn raw_flash_n(file: &[u8], blocks: usize) -> Result<Vec<u8>, String> {
             let len = u32le(&e, 12) as usize;
             let mut stream = hdr.clone();
             stream.extend_from_slice(&file[blocks * 0x30..]);
-            return stream.get(off..off + len).map(|s| s.to_vec()).ok_or("truncated package".into());
+            return off.checked_add(len).and_then(|end| stream.get(off..end)).map(|s| s.to_vec()).ok_or("truncated package".into());
         }
     }
     Err("no flash image in the package".into())
@@ -188,7 +188,7 @@ fn unpack_n(file: &[u8], blocks: usize) -> Result<Unpacked, String> {
     while o + 32 <= flash.len() {
         unmask(&mut flash[o..o + 32], 0xffff);
         let h = head(&flash, o);
-        if h.name == "isd_config.ini" && h.offset + 34 <= flash.len() {
+        if h.name == "isd_config.ini" && h.offset.checked_add(34).is_some_and(|end| end <= flash.len()) {
             let k = chip_key(&flash[h.offset..h.offset + 32]);
             if crc16(&flash[h.offset..h.offset + 32]) == u16le(&flash, h.offset + 32) {
                 key = Some(k);
@@ -207,10 +207,13 @@ fn unpack_n(file: &[u8], blocks: usize) -> Result<Unpacked, String> {
     let (Some(key), Some(area)) = (key.or(key_unchecked), area) else {
         return Err("no chip key or app area in the flash image".into());
     };
-    let first = ((area + 32 + 31) & !31) - area;
+    if area % 32 != 0 || area.checked_add(32).is_none_or(|end| end > flash.len()) {
+        return Err("invalid app area offset".into());
+    }
+    let first = 32;
     unscramble(&mut flash, area, first, area, key);
     let size = head(&flash, area).size;
-    if area + size > flash.len() {
+    if size < 32 || area.checked_add(size).is_none_or(|end| end > flash.len()) {
         return Err("app area runs past the flash image".into());
     }
     if size > first {
@@ -227,8 +230,10 @@ fn unpack_n(file: &[u8], blocks: usize) -> Result<Unpacked, String> {
         }
         o += 32;
     }
-    if !dir.iter().any(|h| h.name == "app.bin") {
-        return Err("no app.bin in the app area".into());
+    let app = dir.iter().find(|h| h.name == "app.bin").ok_or("no app.bin in the app area")?;
+    if app.size == 0 || app.offset % 2 != 0 || app.offset < 32 ||
+        app.offset.checked_add(app.size).is_none_or(|end| end > size) {
+        return Err("app.bin lies outside the app area".into());
     }
     Ok(Unpacked { identity: String::new(), raw, xip: flash[area..].to_vec(), area, dir })
 }
@@ -398,11 +403,58 @@ mod tests {
     fn header(id: &str, n: usize) -> Vec<u8> {
         let mut f = vec![0u8; n * 0x30 + 0x100];
         for i in 0..n {
-            f[i * 0x30 + 0x2f] = id.as_bytes().get(i).map_or(0x7d, |&c| c.wrapping_add(i as u8 + 1));
+            f[i * 0x30 + 0x2f] = id.as_bytes().get(i).map_or(0x7d, |&c| c.wrapping_add((i as u8).wrapping_add(1)));
         }
         // the byte after the header (block n's marker position) must not read as 0x7D
         f[n * 0x30 + 0x2f] = 0x12;
         f
+    }
+
+    fn package_with_area(area: u32) -> Vec<u8> {
+        let mut raw = vec![0u8; 512];
+        // Two root entries: chip configuration at 128, followed by the app area.
+        raw[32 + 4..32 + 8].copy_from_slice(&128u32.to_le_bytes());
+        raw[32 + 16..32 + 30].copy_from_slice(b"isd_config.ini");
+        unmask(&mut raw[32..64], 0xffff);
+        raw[64 + 4..64 + 8].copy_from_slice(&area.to_le_bytes());
+        raw[64 + 12] = 0x81;
+        raw[64 + 14] = 1;
+        raw[64 + 16..64 + 28].copy_from_slice(b"app_dir_head");
+        unmask(&mut raw[64..96], 0xffff);
+        // A valid key blob CRC, so failure reaches the app-area bounds check.
+        let crc = crc16(&raw[128..160]);
+        raw[160..162].copy_from_slice(&crc.to_le_bytes());
+        let mut stream = vec![0u8; 1024];
+        stream[8..10].copy_from_slice(&1u16.to_le_bytes());
+        let crc = crc16(&stream[2..64]);
+        stream[..2].copy_from_slice(&crc.to_le_bytes());
+        unmask(&mut stream[..64], 0xffff);
+        stream[72..76].copy_from_slice(&1024u32.to_le_bytes());
+        stream[76..80].copy_from_slice(&(raw.len() as u32).to_le_bytes());
+        unmask(&mut stream[64..144], 0xffff);
+        stream.extend(raw);
+        let mut result = Vec::new();
+        for (i, block) in stream[..940].chunks(47).enumerate() {
+            result.extend_from_slice(block);
+            result.push(b"FM-1_test".get(i).map_or(0x7d, |c| c.wrapping_add(i as u8 + 1)));
+        }
+        result.extend_from_slice(&stream[940..]);
+        result
+    }
+
+    #[test]
+    fn rejects_invalid_app_offsets_without_panicking() {
+        for area in [0, 1, 511, 512, 0xfffffff0, u32::MAX] {
+            assert!(unpack(&package_with_area(area)).is_err(), "area={area:x}");
+        }
+        let mut malformed = package_with_area(512);
+        for end in (0..malformed.len()).step_by(7) {
+            assert!(unpack(&malformed[..end]).is_err());
+        }
+        // Marker counting must not overflow for a long run of header-like bytes.
+        malformed.resize(20000, 0x7d);
+        let _ = unpack(&malformed);
+        let _ = unpack(&vec![0x7d; 20000]);
     }
 
     #[test]

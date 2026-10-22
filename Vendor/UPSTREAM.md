@@ -41,3 +41,20 @@ RAM blocks use the original Rust interpreter because mixed C/Rust dispatch there
 was slower on Stock. Without generated kernels the original Rust interpreter remains
 the default.
 The native Python builders verify source and resource inputs and write local build receipts.
+
+Android binary recompilation (2026-10-22): the existing AArch64 block compiler is
+also built for Android. Code pages use the runtime page size, start inaccessible,
+become RW only for construction, then RX before publication. The code cache and
+boxed chain slots/helpers are freed with their owning CPU. Cache flushes clean
+data and invalidate instructions according to CTR_EL0. Rust helper panics are
+contained until generated frames return. Instruction budgets now bound both the
+reference and compiled paths exactly, including the optional static C path, so
+CPU scheduling and input timing agree. Code generation remains based on the
+vendored MIT implementation; no guest executable bytes are called directly.
+
+The Android port in Harbor was inspected as prior art:
+https://github.com/markterm/harbor/blob/main/patches/0001-fm1-core-enable-the-aarch64-jit-on-android.patch
+This local implementation retains the pinned ISA/SoC revision and uses page-based
+W^X publication rather than that patch's RWX mapping. Import support does not
+claim compatibility with every current or future firmware. Local parser changes
+reject truncated/out-of-range app headers and avoid marker-count overflow.

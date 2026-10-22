@@ -21,16 +21,16 @@ mod threaded;
 ///
 /// Width-specific accessors keep MMIO side effects honest: a byte read must
 /// not silently widen into a word read of a peripheral register.
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+#[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")))]
 mod jit;
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+#[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")))]
 mod jit_a64;
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+#[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")))]
 pub use jit::JitMem;
 #[cfg(target_arch = "wasm32")]
 pub mod jit_wasm;
 /// (no JIT on this host: the type exists so buses compile everywhere)
-#[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
+#[cfg(not(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android"))))]
 #[derive(Clone, Copy, Debug)]
 pub struct JitMem {
     pub ram: *mut u8,
@@ -196,9 +196,9 @@ pub struct Cpu {
     /// path, the full decode beside them.
     pub icache: Vec<Line>,
     pub icache_x: Vec<Option<LineX>>,
-    /// Compile hot blocks to native code (AArch64 macOS hosts).
+    /// Compile hot blocks to native code (AArch64 macOS/Android hosts).
     pub jit_on: bool,
-    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")))]
     jit: Option<Box<jit::Jit>>,
     /// (the wasm32 build: hot blocks as WebAssembly modules, see jit_wasm.rs)
     #[cfg(target_arch = "wasm32")]
@@ -442,7 +442,7 @@ impl Cpu {
             }};
         }
         loop {
-            // the budget is checked per block (a block is at most 32 ops)
+            // Both compiled and reference execution honor the same instruction budget.
             if n >= budget {
                 sync!();
                 return Ok((n, false));
@@ -475,7 +475,7 @@ impl Cpu {
             if !careful && !self.jit_on && !thread_partial {
                 if let Some(pair) = self.bpairs[id] {
                     let ticks = 2 - u64::from(n == 0);
-                    if bus.tick_room() >= ticks {
+                    if budget.saturating_sub(n) >= 2 && bus.tick_room() >= ticks {
                         // Both ops are pure register operations, so no MMIO or interrupt
                         // enable can observe the batched ticks. Never cross a due tick.
                         bus.add_ticks(ticks);
@@ -489,7 +489,7 @@ impl Cpu {
                     }
                 }
             }
-            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")))]
             if self.jit_on && !careful {
                 if let Some(mem) = jit_mem {
                     if self.jit.is_none() {
@@ -497,15 +497,15 @@ impl Cpu {
                     }
                     let code = match self.jit.as_mut() {
                         Some(j) => j.entry::<B>(id, &self.bops[start as usize..(start + len) as usize], pc, &mem),
-                        None => None,
+                        None => { self.jit_on = false; None },
                     };
                     if let Some((code, _)) = code {
                         // (the code checks itself that its ticks fall before anything is due)
                         let extra = if n == 0 { 0 } else { 1 };
                         sync!();
                         // SAFETY: code was compiled for this bus type and memory map
-                        let (k, slot) = unsafe { jit::run(code, self, bus, &mem, extra, budget.saturating_sub(n).max(len)) };
-                        if self.profile { self.jit_entries += 1; self.jit_insns += k as u64; }
+                        let (k, slot) = unsafe { jit::run(code, self, bus, &mem, extra, budget.saturating_sub(n)) };
+                        self.jit_entries += 1; self.jit_insns += k as u64;
                         if k > 0 {
                             n += k;
                             pc = self.pc;
@@ -514,7 +514,7 @@ impl Cpu {
                             if !slot.is_null() {
                                 // a chainable exit came back: link it once its target is compiled
                                 if let Some(body) = self.jit_body_at(pc, bus.code_writes().is_some() && !mem.ram_code.is_null()) {
-                                    // SAFETY: slots are leaked u64s owned by the compiled code
+                                    // SAFETY: slots are boxed u64s owned by this JIT
                                     unsafe { *slot = body as u64 };
                                 }
                             }
@@ -552,10 +552,10 @@ impl Cpu {
                         // (the budget as the interpreter keeps it: this block whole, the region's
                         // next ones while they fit. cpu1's idle probe runs a block at a time to
                         // find its polling loop's start again; compiled RAM code ran past it)
-                        let cap = budget.saturating_sub(n).max(len);
+                        let cap = budget.saturating_sub(n);
                         // SAFETY: code was compiled for this bus type and memory map
                         let k = unsafe { jit_wasm::run(code, at, self, bus, extra, cap) };
-                        if self.profile { self.jit_entries += 1; self.jit_insns += k as u64; }
+                        self.jit_entries += 1; self.jit_insns += k as u64;
                         if k > 0 {
                             n += k;
                             pc = self.pc;
@@ -567,9 +567,17 @@ impl Cpu {
                     }
                 }
             }
-            #[cfg(not(any(all(target_arch = "aarch64", target_os = "macos"), target_arch = "wasm32")))]
+            #[cfg(not(any(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")), target_arch = "wasm32")))]
             let _ = (id, &jit_mem);
             for i in start..start + len {
+                if n >= budget {
+                    // A split glued pair keeps interrupts suppressed until its second half.
+                    if i > self.blocks[id].1 && !careful && self.bops[(i - 1) as usize].glue {
+                        self.hold_irq = 1;
+                    }
+                    sync!();
+                    return Ok((n, false));
+                }
                 // SAFETY: build_block pushed start..start+len into bops. Executing an
                 // op changes architectural state and the bus, never bops or its allocation;
                 // block creation/clearing happens only outside this loop. The reference
@@ -774,7 +782,7 @@ impl Cpu {
     }
 
     /// The compiled body of the block starting at pc, if there is one.
-    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")))]
     fn jit_body_at(&self, pc: u32, ram_tracked: bool) -> Option<*const u8> {
         // RAM bodies validate their own immutable code snapshot before execution.
         if self.bmap.is_empty() || (!ram_tracked && !(0x0200_0000..0x0400_0000).contains(&pc)) {
@@ -802,7 +810,7 @@ impl Cpu {
             self.bbytes.clear();
             self.bver.clear();
             self.bmap.iter_mut().for_each(|x| *x = 0);
-            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "android")))]
             if let Some(j) = self.jit.as_mut() {
                 j.reset();
             }

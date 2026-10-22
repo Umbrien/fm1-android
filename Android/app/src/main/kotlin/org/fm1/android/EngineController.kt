@@ -1,6 +1,7 @@
 package org.fm1.android
 
 import android.content.Context
+import android.net.Uri
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -43,6 +44,12 @@ class EngineController(context: Context) {
     private val context = context.applicationContext
     private val directory = File(context.filesDir, "Instruments").apply { mkdirs() }
     private val projects = File(context.filesDir, "Projects").apply { mkdirs() }
+    private val firmwareLibrary = FirmwareLibrary(context)
+    @Volatile var selectedFirmwareId: String? = null
+        private set
+    @Volatile private var importedName = "Imported firmware"
+    @Volatile var compiledInstructions = 0L
+        private set
     private val prefs = context.getSharedPreferences("fm1", 0)
     private val main = Handler(Looper.getMainLooper())
     private val workerThread = HandlerThread("FM1 native owner", Process.THREAD_PRIORITY_AUDIO)
@@ -144,7 +151,8 @@ class EngineController(context: Context) {
         audioBufferFrames = track.bufferSizeInFrames
         audioThread = Thread(::audioLoop, "FM1 PCM output").also { it.start() }
         worker.post {
-            load(selectedKind)
+            val imported = prefs.getString("firmwareId", null)
+            if (imported != null) load(13, firmwareId = imported) else load(selectedKind)
             worker.post(tick)
         }
     }
@@ -210,37 +218,88 @@ class EngineController(context: Context) {
     private fun packageBytes(kind: Int) =
         context.assets.open("engines/$kind.fwsc").use { readBounded(it, 4 * 1024 * 1024) }
 
-    private fun saveFile(kind: Int) =
-        File(directory, "$kind${if (kind == 6) ".preview.flash" else ".flash"}")
+    private fun saveFile(kind: Int, firmwareId: String? = selectedFirmwareId): File {
+        if (firmwareId != null && !firmwareId.matches(Regex("[0-9a-f]{64}")))
+            throw IOException("Invalid firmware identity.")
+        return File(directory, if (firmwareId != null) "import-$firmwareId.flash"
+            else "$kind${if (kind == 6) ".preview.flash" else ".flash"}")
+    }
 
-    private fun load(kind: Int, reset: Boolean = false) {
+    fun selectedName(): String = if (selectedFirmwareId != null) importedName
+        else ENGINE_NAMES.getOrElse(ENGINE_KINDS.indexOf(selectedKind)) { "Imported firmware" }
+
+    fun importedFirmwares(): List<Pair<String, String>> = firmwareLibrary.entries().map { it.id to it.name }
+
+    fun selectFirmware(id: String) {
+        message("Loading and compiling firmware…")
+        worker.post { load(13, firmwareId = id) }
+    }
+
+    fun importFirmware(uri: Uri, name: String) {
+        message("Checking and compiling firmware…")
+        worker.post {
+            try {
+                val bytes = context.contentResolver.openInputStream(uri).use {
+                    if (it == null) throw IOException("Cannot open firmware file.")
+                    readBounded(it, 4 * 1024 * 1024)
+                }
+                val entry = firmwareLibrary.identify(bytes, name)
+                load(13, firmwareId = entry.id, importedBytes = bytes, entry = entry)
+            } catch (error: Exception) { failure(error) }
+        }
+    }
+
+    private fun warmBinary(candidate: Long) {
+        val deadline = SystemClock.elapsedRealtime() + 15000
+        val pcm = FloatArray(1024)
+        var frames = 0
+        while (frames < 8192 && SystemClock.elapsedRealtime() < deadline) {
+            val count = NativeEngine.render(candidate, pcm, 512)
+            if (count !in 0..512 || (0 until count * 2).any { !pcm[it].isFinite() })
+                throw IOException("Firmware produced invalid audio during startup.")
+            frames += count
+        }
+        if (frames < 8192) throw IOException("Firmware did not start audio within 15 seconds. It may require unsupported hardware.")
+        if (NativeEngine.jitInstructions(candidate) == 0L)
+            throw IOException("ARM64 compilation is unavailable for this firmware or device.")
+    }
+
+    private fun load(kind: Int, reset: Boolean = false, firmwareId: String? = null,
+                     importedBytes: ByteArray? = null, entry: FirmwareLibrary.Entry? = null) {
         var candidate = 0L
         val wasReady = ready
         ready = false
         clearRing()
         try {
-            candidate = NativeEngine.create(packageBytes(kind), kind)
-            val save = saveFile(kind)
+            if (machine != 0L && !reset) checkpoint()
+            val imported = if (firmwareId != null) entry ?: firmwareLibrary.entry(firmwareId) else null
+            val bytes = if (firmwareId != null) importedBytes ?: firmwareLibrary.bytes(firmwareId) else packageBytes(kind)
+            candidate = if (firmwareId != null) NativeEngine.createBinary(bytes, true) else NativeEngine.create(bytes, kind)
+            val save = saveFile(kind, firmwareId)
             if (!reset && save.isFile && !NativeEngine.restore(candidate, Files.readAllBytes(save.toPath())))
                 throw IOException("Saved instrument data could not be restored. It has been kept.")
             NativeEngine.volume(candidate, masterValue)
+            if (firmwareId != null) warmBinary(candidate)
+            if (imported != null && importedBytes != null) firmwareLibrary.store(imported, bytes)
             // Commit the fresh state before replacing the running instance. Do not
             // checkpoint the old instance over it during a reset.
             if (reset) atomicWrite(save, NativeEngine.flash(candidate))
             if (machine != 0L) {
                 NativeEngine.release(machine)
-                if (!reset) checkpoint()
                 NativeEngine.destroy(machine)
             }
             machine = candidate
             candidate = 0
             selectedKind = kind
-            prefs.edit().putInt("instrument", kind).apply()
+            selectedFirmwareId = firmwareId
+            if (imported != null) importedName = imported.name
+            compiledInstructions = NativeEngine.jitInstructions(machine)
+            prefs.edit().putInt("instrument", kind).putString("firmwareId", firmwareId).apply()
             clearRing()
             ready = true
             peak = 0.0
             publishFrame()
-            message("")
+            message(if (firmwareId != null) "$importedName · ARM64 compiled" else "")
         } catch (error: Exception) {
             if (candidate != 0L) NativeEngine.destroy(candidate)
             ready = wasReady
@@ -267,12 +326,12 @@ class EngineController(context: Context) {
         worker.post { load(kind) }
     }
 
-    fun resetFirmware(kind: Int) {
-        if (kind !in ENGINE_KINDS) return
+    fun resetFirmware(kind: Int, firmwareId: String? = selectedFirmwareId) {
+        if (kind !in ENGINE_KINDS && kind != 13) return
         worker.post {
             // The confirmation belongs to this firmware, even if another load
             // was queued while its dialog was visible.
-            if (selectedKind == kind) load(kind, reset = true)
+            if (selectedKind == kind && selectedFirmwareId == firmwareId) load(kind, reset = true, firmwareId = firmwareId)
         }
     }
 
@@ -534,8 +593,8 @@ class EngineController(context: Context) {
                 "FoMni 0.4",
                 "Jangada 1.0.1",
                 "Clipper 1.1 Experimental",
-                "M-VAVE Stock V15 (emulated)",
-                "FM-1+VA 102 (emulated)",
+                "M-VAVE Stock V15 (ARM64 JIT)",
+                "FM-1+VA 102 (ARM64 JIT)",
             )
         @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
 

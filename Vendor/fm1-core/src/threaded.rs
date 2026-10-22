@@ -142,7 +142,7 @@ pub(super) fn run<B:Bus>(cpu:&mut Cpu,bus:&mut B,block:usize,pc:u32,budget:u32,p
     // interpreter than repeatedly entering C and returning for unsupported tails.
     if !(0x0200_0000..0x0400_0000).contains(&pc) { return None; }
     if cpu.thread_blocks.get(block)?.hot == 0 { return None; }
-    let room = bus.tick_room().saturating_add(u64::from(prepaid)).min(max_count as u64).min(u32::MAX as u64) as u32;
+    let room = bus.tick_room().saturating_add(u64::from(prepaid)).min(max_count as u64).min(budget as u64).min(u32::MAX as u64) as u32;
     if room == 0 { return None; }
     let mem = bus.thread_mem()?;
     let cpu_ptr=cpu as *mut Cpu;
@@ -418,7 +418,7 @@ mod differential {
             same(&a,&b,&ma,&mb);
             assert_eq!((a.hold_irq,a.pair_pending,&a.pred_skips,a.rep_start,a.rep_end,a.rep_count),
                 (b.hold_irq,b.pair_pending,&b.pred_skips,b.rep_start,b.rep_end,b.rep_count));
-            if mode==0 && due==3 && budget>=1 {assert_eq!(a.hold_irq,1,"due between glued head and tail");}
+            if mode==0 && due==3 && budget>=2 {assert_eq!(a.hold_irq,1,"due between glued head and tail");}
         }}}}
     }
     #[test]

@@ -24,7 +24,7 @@ fi
 "$SDK/platform-tools/adb" shell input keyevent KEYCODE_WAKEUP
 "$SDK/platform-tools/adb" shell wm dismiss-keyguard
 "$SDK/platform-tools/adb" install -r "$OUT/tests.apk"
-"$SDK/platform-tools/adb" shell am instrument -w -e exchange "$EXCHANGE" -e uiOnly "${FM1_UI_ONLY:-false}" org.fm1.android.tests/org.fm1.android.EngineInstrumentation | tee "$OUT/result.txt"
+"$SDK/platform-tools/adb" shell am instrument -w -e exchange "$EXCHANGE" -e compilerOnly "${FM1_COMPILER_ONLY:-false}" -e uiOnly "${FM1_UI_ONLY:-false}" org.fm1.android.tests/org.fm1.android.EngineInstrumentation | tee "$OUT/result.txt"
 python3 - "$OUT/result.txt" <<'PYRESULT'
 import json,pathlib,re,sys
 text=pathlib.Path(sys.argv[1]).read_text();matches=list(re.finditer(r'\{\s*"platform"\s*:',text))

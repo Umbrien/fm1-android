@@ -22,9 +22,9 @@ build tooling; this repository contains no iOS frontend or Xcode project.
 
 Clipper 1.1-experimental shares the SLOOP hardware host, with separate source,
 symbol prefix, state and flash. Its SLOOP-only typed file APIs are excluded.
-Stock V15 is an exact catalogue entry executed by the original PI32v2 interpreter;
+Stock V15 is an exact catalogue entry executed by the PI32v2 runtime with Android ARM64 JIT;
 it is distinct from the native FM1 Open V13 portable preview.
 
 FM-1+VA Version 102 (kind 12) also executes its exact original package in the
-interpreter. Package pins live in packages.lock.json; it has independent 1 MiB
+binary runtime. Package pins live in packages.lock.json; it has independent 1 MiB
 flash and is not admitted through the source-native registry.

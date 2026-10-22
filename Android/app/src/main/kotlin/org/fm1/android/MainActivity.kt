@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity(), EngineController.Listener {
     private var zoom: View? = null
 
     companion object {
+        private const val FIRMWARE = 104
         private const val SAMPLE = 103
         private const val IMPORT = 101
         private const val EXPORT = 102
@@ -190,12 +191,7 @@ class MainActivity : AppCompatActivity(), EngineController.Listener {
 
     private fun refreshChrome() {
         if (!::firmware.isInitialized) return
-        var index = 0
-        for (i in EngineController.ENGINE_KINDS.indices) if (
-            EngineController.ENGINE_KINDS[i] == engine.selectedKind
-        )
-            index = i
-        val name = EngineController.ENGINE_NAMES[index]
+        val name = engine.selectedName()
         firmware.text = name
         firmware.contentDescription = "$name, select firmware"
         transport.setIconResource(if (engine.paused) R.drawable.ic_play_arrow else R.drawable.ic_pause)
@@ -220,20 +216,34 @@ class MainActivity : AppCompatActivity(), EngineController.Listener {
     }
 
     private fun library() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Instruments")
-            .setSingleChoiceItems(EngineController.ENGINE_NAMES, EngineController.ENGINE_KINDS.indexOf(engine.selectedKind)) { dialog, i ->
-                dialog.dismiss()
-                panel.releaseTouches()
-                engine.selectEngine(EngineController.ENGINE_KINDS[i])
-            }
-            .setNegativeButton("Close", null)
-            .show()
+        try {
+            val imported = engine.importedFirmwares()
+            val names = EngineController.ENGINE_NAMES + imported.map { "${it.second} · ${it.first.take(8)}" }
+            val selected = if (engine.selectedFirmwareId == null) EngineController.ENGINE_KINDS.indexOf(engine.selectedKind)
+                else imported.indexOfFirst { it.first == engine.selectedFirmwareId }.let {
+                    if (it < 0) -1 else EngineController.ENGINE_KINDS.size + it
+                }
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Instruments")
+                .setSingleChoiceItems(names, selected) { dialog, i ->
+                    dialog.dismiss()
+                    panel.releaseTouches()
+                    if (i < EngineController.ENGINE_KINDS.size) engine.selectEngine(EngineController.ENGINE_KINDS[i])
+                    else engine.selectFirmware(imported[i - EngineController.ENGINE_KINDS.size].first)
+                }
+                .setNeutralButton("Open .fwsc…") { _, _ ->
+                    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), FIRMWARE)
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        } catch (e: Exception) { error(e) }
     }
 
     private fun confirmFirmwareReset() {
         val kind = engine.selectedKind
-        val name = EngineController.ENGINE_NAMES[EngineController.ENGINE_KINDS.indexOf(kind)]
+        val name = engine.selectedName()
+        val firmwareId = engine.selectedFirmwareId
         MaterialAlertDialogBuilder(this)
             .setTitle("Reset $name?")
             .setMessage(
@@ -245,7 +255,7 @@ class MainActivity : AppCompatActivity(), EngineController.Listener {
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Reset firmware") { _, _ ->
                 panel.releaseTouches()
-                engine.resetFirmware(kind)
+                engine.resetFirmware(kind, firmwareId)
             }
             .show()
     }
@@ -307,7 +317,7 @@ class MainActivity : AppCompatActivity(), EngineController.Listener {
         MaterialAlertDialogBuilder(this)
             .setTitle("FM–1")
             .setMessage(
-                "Unofficial native FM–1 instrument. Nine source-compiled engines plus emulated M-VAVE Stock V15 and FM-1+VA 102.\n\nPlay the 27 keys; drag knobs vertically. Hold function buttons for firmware combinations. Tap the display to enlarge it. MASTER controls the instrument; the speaker control mutes the output.\n\nProjects and samples stay on this device unless you explicitly export them. No account or telemetry. Backgrounding pauses audio.\n\nGPL-3.0-only. Includes fm1-emu (MIT) and source-native engines by their respective authors. Not affiliated with M-VAVE. Stock V15 and FM-1+VA emulation are experimental and may run below real time. Portable FM1 Open preview may differ from hardware and does not include the original factory sound bank."
+                "Unofficial native FM–1 instrument. Nine source-compiled engines plus ARM64-recompiled firmware. Use Instruments → Open .fwsc to import an FM-1 package. Each imported file has separate saved state.\n\nPlay the 27 keys; drag knobs vertically. Hold function buttons for firmware combinations. Tap the display to enlarge it. MASTER controls the instrument; the speaker control mutes the output.\n\nProjects and samples stay on this device unless you explicitly export them. No account or telemetry. Backgrounding pauses audio.\n\nGPL-3.0-only. Includes fm1-emu (MIT) and source-native engines by their respective authors. Not affiliated with M-VAVE. Imported firmware, Stock V15 and FM-1+VA use on-device ARM64 recompilation with FM-1 hardware emulation. Compatibility and real-time speed depend on the firmware and phone. Portable FM1 Open preview may differ from hardware and does not include the original factory sound bank."
             )
             .setNeutralButton("Credits and licenses") { _, _ -> licenses() }
             .setPositiveButton("Done", null)
@@ -476,6 +486,10 @@ class MainActivity : AppCompatActivity(), EngineController.Listener {
                     exportFile?.delete()
                     exportFile = null
                     Toast.makeText(this, "Export saved", Toast.LENGTH_SHORT).show()
+                }
+                FIRMWARE -> {
+                    panel.releaseTouches()
+                    engine.importFirmware(uri, displayName(uri))
                 }
                 SAMPLE -> loadSample(uri)
                 IMPORT -> {

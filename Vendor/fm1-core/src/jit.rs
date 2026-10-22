@@ -54,6 +54,7 @@ pub struct Ctx {
     /// the chain slot of the exit taken back to Rust (null: not a chainable exit)
     slot: *mut u64,
     code_version: Option<u64>,
+    panic: Option<Box<dyn std::any::Any + Send>>,
 }
 const OFF_BRK: u32 = 24;
 const OFF_SLOT: u32 = 32;
@@ -63,43 +64,111 @@ const _: () = assert!(std::mem::offset_of!(Ctx, slot) == OFF_SLOT as usize);
 // ------------------------------------------------------------------ executable memory
 extern "C" {
     fn mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, off: i64) -> *mut c_void;
+    fn munmap(addr: *mut c_void, len: usize) -> c_int;
+}
+#[cfg(target_os = "macos")]
+extern "C" {
     fn pthread_jit_write_protect_np(enabled: c_int);
     fn sys_icache_invalidate(start: *mut c_void, len: usize);
+}
+#[cfg(target_os = "android")]
+extern "C" {
+    fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> c_int;
+    fn getpagesize() -> c_int;
+}
+
+/// Clean data to the point of unification, invalidate instructions, then synchronize.
+/// CTR_EL0 supplies each cache's line size; works on cores requiring both operations.
+#[cfg(target_os = "android")]
+unsafe fn flush_icache(start: *const u8, len: usize) {
+    let ctr: u64;
+    core::arch::asm!("mrs {}, ctr_el0", out(reg) ctr, options(nomem, nostack));
+    let end = start as usize + len;
+    if ctr & (1 << 28) == 0 {
+        let line = 4usize << ((ctr >> 16) & 15);
+        let mut at = (start as usize) & !(line - 1);
+        while at < end {
+            core::arch::asm!("dc cvau, {}", in(reg) at, options(nostack));
+            at += line;
+        }
+    }
+    core::arch::asm!("dsb ish", options(nostack));
+    if ctr & (1 << 29) == 0 {
+        let line = 4usize << (ctr & 15);
+        let mut at = (start as usize) & !(line - 1);
+        while at < end {
+            core::arch::asm!("ic ivau, {}", in(reg) at, options(nostack));
+            at += line;
+        }
+        core::arch::asm!("dsb ish", options(nostack));
+    }
+    core::arch::asm!("isb", options(nostack));
 }
 
 pub struct CodeCache {
     base: *mut u8,
     size: usize,
     used: usize,
+    #[cfg(target_os = "android")]
+    page: usize,
 }
 
 impl CodeCache {
     pub fn new(size: usize) -> Option<CodeCache> {
-        let flags = 0x0002 | 0x1000 | 0x0800; // PRIVATE | ANON | JIT
-        // SAFETY: anonymous mapping chosen by the OS; failure is checked.
-        let p = unsafe { mmap(std::ptr::null_mut(), size, 7, flags, -1, 0) };
-        if p as isize == -1 || p.is_null() {
-            return None;
-        }
-        Some(CodeCache { base: p as *mut u8, size, used: 0 })
+        #[cfg(target_os = "macos")]
+        let (flags, prot) = (0x0002 | 0x1000 | 0x0800, 7); // PRIVATE | ANON | JIT
+        #[cfg(target_os = "android")]
+        let (flags, prot) = (0x02 | 0x20, 0); // PRIVATE | ANONYMOUS, reserve inaccessible
+        #[cfg(target_os = "android")]
+        let page = unsafe { getpagesize() } as usize;
+        #[cfg(target_os = "android")]
+        if !page.is_power_of_two() || page > size { return None; }
+        let p = unsafe { mmap(std::ptr::null_mut(), size, prot, flags, -1, 0) };
+        if p as isize == -1 || p.is_null() { return None; }
+        Some(CodeCache { base: p as *mut u8, size, used: 0,
+            #[cfg(target_os = "android")] page,
+        })
     }
 
     fn write(&mut self, words: &[u32]) -> Option<*const u8> {
-        let bytes = words.len() * 4;
-        if self.used + bytes > self.size {
-            return None;
-        }
-        // SAFETY: the range is inside the owned mapping; write protection is lifted only around
-        // the copy, and the instruction cache is invalidated for exactly that range.
+        let bytes = words.len().checked_mul(4)?;
+        #[cfg(target_os = "macos")]
+        let reserved = bytes;
+        #[cfg(target_os = "android")]
+        let reserved = bytes.checked_add(self.page - 1)? & !(self.page - 1);
+        if bytes == 0 || self.used.checked_add(reserved)? > self.size { return None; }
+        // One serial owner: no generated code executes while compiling. Android gives each
+        // block whole pages, RW during construction and RX afterwards, never RWX. Failed
+        // protection changes cannot revoke execution from already published blocks.
         unsafe {
             let dst = self.base.add(self.used);
-            pthread_jit_write_protect_np(0);
-            std::ptr::copy_nonoverlapping(words.as_ptr() as *const u8, dst, bytes);
-            pthread_jit_write_protect_np(1);
-            sys_icache_invalidate(dst as *mut c_void, bytes);
-            self.used += bytes;
+            #[cfg(target_os = "macos")]
+            {
+                pthread_jit_write_protect_np(0);
+                std::ptr::copy_nonoverlapping(words.as_ptr() as *const u8, dst, bytes);
+                pthread_jit_write_protect_np(1);
+                sys_icache_invalidate(dst as *mut c_void, bytes);
+            }
+            #[cfg(target_os = "android")]
+            {
+                if mprotect(dst.cast(), reserved, 3) != 0 { return None; }
+                std::ptr::copy_nonoverlapping(words.as_ptr() as *const u8, dst, bytes);
+                flush_icache(dst, bytes);
+                if mprotect(dst.cast(), reserved, 5) != 0 {
+                    mprotect(dst.cast(), reserved, 0);
+                    return None;
+                }
+            }
+            self.used += reserved;
             Some(dst as *const u8)
         }
+    }
+}
+
+impl Drop for CodeCache {
+    fn drop(&mut self) {
+        // No entry escapes the owning CPU's lifetime.
+        unsafe { munmap(self.base.cast(), self.size); }
     }
 }
 
@@ -110,6 +179,8 @@ pub struct Jit {
     state: Vec<Entry>,
     // Boxes keep addresses embedded in generated code stable until cache reset.
     guards: Vec<Box<RamGuard>>,
+    slots: Vec<Box<u64>>,
+    helpers: Vec<Box<Fast>>,
     /// compile helper calls that count themselves (`Cpu::profile` when the JIT was made)
     profile: bool,
 }
@@ -137,7 +208,7 @@ const HOT: u32 = 32;
 
 impl Jit {
     pub fn new(profile: bool) -> Option<Jit> {
-        Some(Jit { cache: CodeCache::new(64 << 20)?, state: Vec::new(), guards: Vec::new(), profile })
+        Some(Jit { cache: CodeCache::new(64 << 20)?, state: Vec::new(), guards: Vec::new(), slots: Vec::new(), helpers: Vec::new(), profile })
     }
 
     /// The compiled code of block `id` (prefix length), compiling it once it is hot.
@@ -153,11 +224,13 @@ impl Jit {
                 None
             }
             Entry::Cold(_) => {
+                if self.cache.used >= self.cache.size { self.state[id] = Entry::No; return None; }
+                let counts = (self.guards.len(), self.slots.len(), self.helpers.len());
                 let plen = ops.iter().take_while(|o| !o.careful).count();
                 let e = if plen == 0 {
                     Entry::No
                 } else {
-                    match compile::<B>(&ops[..plen], pc0, mem, &mut self.guards, self.profile) {
+                    match compile::<B>(&ops[..plen], pc0, mem, &mut self.guards, &mut self.slots, &mut self.helpers, self.profile) {
                         Some((w, body)) => match self.cache.write(&w) {
                             // SAFETY: body is a word index inside the code just written
                             Some(p) => Entry::Code(p, unsafe { p.add(body * 4) }, plen as u32),
@@ -166,6 +239,9 @@ impl Jit {
                         None => Entry::No,
                     }
                 };
+                if matches!(e, Entry::No) {
+                    self.guards.truncate(counts.0); self.slots.truncate(counts.1); self.helpers.truncate(counts.2);
+                }
                 self.state[id] = e;
                 match e {
                     Entry::Code(p, _, n) => Some((p, n)),
@@ -188,6 +264,8 @@ impl Jit {
         self.state.clear();
         self.cache.used = 0;
         self.guards.clear();
+        self.slots.clear();
+        self.helpers.clear();
     }
 }
 
@@ -198,9 +276,10 @@ impl Jit {
 pub(crate) unsafe fn run<B: Bus>(code: *const u8, cpu: &mut Cpu, bus: &mut B, mem: &JitMem, extra: u32, cap: u32) -> (u32, *mut u64) {
     // instructions this call may run: their ticks ((k - 1) + extra) must all fit tick_room
     let limit = (bus.tick_room() + 1).saturating_sub(extra as u64).min(1 << 30).min(cap as u64) as u32;
-    let mut ctx = Ctx { cpu: cpu as *mut Cpu, bus: bus as *mut B as *mut (), extra, synced: 0, brk: 0, _pad: 0, slot: std::ptr::null_mut(), code_version: bus.code_writes() };
+    let mut ctx = Ctx { cpu: cpu as *mut Cpu, bus: bus as *mut B as *mut (), extra, synced: 0, brk: 0, _pad: 0, slot: std::ptr::null_mut(), code_version: bus.code_writes(), panic: None };
     let f: extern "C" fn(*mut Cpu, *mut Ctx, *mut u8, *const u8, u32, *const u8) -> u32 = unsafe { std::mem::transmute(code) };
     let k = f(cpu as *mut Cpu, &mut ctx, mem.ram, mem.xip, limit, mem.ram_code);
+    if let Some(panic) = ctx.panic.take() { std::panic::resume_unwind(panic); }
     if k > 0 {
         // the ticks of the instructions run, less those the helpers applied already
         let need = (k - 1) + extra;
@@ -221,7 +300,20 @@ unsafe fn sync<B: Bus>(ctx: &mut Ctx, bus: &mut B, idx: u32) {
     }
 }
 
+// A peripheral error must never unwind through generated code (which has no unwind tables).
+fn helper<T: Default>(ctx: *mut Ctx, action: impl FnOnce() -> T) -> T {
+    if unsafe { (*ctx).panic.is_some() } { return T::default(); }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(action)) {
+        Ok(value) => value,
+        Err(error) => {
+            unsafe { (*ctx).panic = Some(error); (*ctx).brk = 1; }
+            T::default()
+        }
+    }
+}
+
 extern "C" fn h_read<B: Bus>(ctx: *mut Ctx, addr: u32, idx: u32, w: u32) -> u32 {
+    helper(ctx, || {
     // SAFETY: ctx is the live context `run` passed in; the bus pointer is the caller's &mut B.
     let ctx = unsafe { &mut *ctx };
     let bus = unsafe { &mut *(ctx.bus as *mut B) };
@@ -235,9 +327,11 @@ extern "C" fn h_read<B: Bus>(ctx: *mut Ctx, addr: u32, idx: u32, w: u32) -> u32 
         ctx.brk = 1;
     }
     v
+    })
 }
 
 extern "C" fn h_write<B: Bus>(ctx: *mut Ctx, addr: u32, v: u32, idx: u32, w: u32) {
+    helper(ctx, || {
     // SAFETY: as h_read.
     let ctx = unsafe { &mut *ctx };
     let bus = unsafe { &mut *(ctx.bus as *mut B) };
@@ -250,13 +344,15 @@ extern "C" fn h_write<B: Bus>(ctx: *mut Ctx, addr: u32, v: u32, idx: u32, w: u32
     if bus.next_tick_due() || bus.code_writes() != ctx.code_version {
         ctx.brk = 1;
     }
+    })
 }
 
 /// Any op through the interpreter's own executor: bit 32 = jumped (target in the low word).
 // PROF: count the call (`Cpu::jit_helpers`); chosen when compiling, so code compiled without
 // profiling pays nothing for it
 extern "C" fn h_op<B: Bus, const PROF: bool>(ctx: *mut Ctx, op: *const Fast, idx: u32, next_pc: u32) -> u64 {
-    // SAFETY: as h_read; `op` points at a leaked, immutable Fast.
+    helper(ctx, || {
+    // SAFETY: as h_read; `op` points at a JIT-owned, immutable Fast.
     let ctx = unsafe { &mut *ctx };
     let bus = unsafe { &mut *(ctx.bus as *mut B) };
     let cpu = unsafe { &mut *ctx.cpu };
@@ -272,6 +368,7 @@ extern "C" fn h_op<B: Bus, const PROF: bool>(ctx: *mut Ctx, op: *const Fast, idx
         Some(t) => (1u64 << 32) | t as u64,
         None => 0,
     }
+    })
 }
 
 // Each RAM body owns an immutable snapshot. Even an old incoming chain remains safe
@@ -283,6 +380,7 @@ struct RamGuard {
 }
 
 extern "C" fn h_ram_ok<B: Bus>(ctx: *mut Ctx, guard: *mut RamGuard) -> u32 {
+    helper(ctx, || {
     let ctx = unsafe { &mut *ctx };
     let bus = unsafe { &mut *(ctx.bus as *mut B) };
     let guard = unsafe { &mut *guard };
@@ -292,6 +390,7 @@ extern "C" fn h_ram_ok<B: Bus>(ctx: *mut Ctx, guard: *mut RamGuard) -> u32 {
         .is_some_and(|now| now.len() >= guard.bytes.len() && now[..guard.bytes.len()] == *guard.bytes);
     if valid { guard.version = version; }
     valid as u32
+    })
 }
 
 // ------------------------------------------------------------------ code generation
@@ -310,6 +409,8 @@ const FRAME: i32 = 96;
 struct Gen<'a> {
     a: Asm,
     mem: &'a JitMem,
+    slots: &'a mut Vec<Box<u64>>,
+    helpers: &'a mut Vec<Box<Fast>>,
     exit: Label,
     h_read: u64,
     h_write: u64,
@@ -439,7 +540,8 @@ impl Gen<'_> {
     /// Continue at a fixed pc: straight into its compiled body when the slot holds one,
     /// else back to Rust, which fills the slot once that block is compiled.
     fn chain(&mut self, pc: u32, count: u32) {
-        let slot: &'static mut u64 = Box::leak(Box::new(0u64));
+        self.slots.push(Box::new(0));
+        let slot = self.slots.last_mut().unwrap().as_mut();
         let back = self.a.label();
         self.a.add_imm(DONE, DONE, count);
         self.a.mov64(10, slot as *mut u64 as u64);
@@ -552,7 +654,7 @@ impl Gen<'_> {
 }
 
 /// Native code for a block prefix of plain micro-ops (none careful).
-fn compile<B: Bus>(ops: &[crate::BOp], pc0: u32, mem: &JitMem, guards: &mut Vec<Box<RamGuard>>, profile: bool) -> Option<(Vec<u32>, usize)> {
+fn compile<B: Bus>(ops: &[crate::BOp], pc0: u32, mem: &JitMem, guards: &mut Vec<Box<RamGuard>>, slots: &mut Vec<Box<u64>>, helpers: &mut Vec<Box<Fast>>, profile: bool) -> Option<(Vec<u32>, usize)> {
     for o in [off_reg(15), off_sp(), off_rets(), off_pc(), off_hold()] {
         if o >= 16384 {
             return None;
@@ -563,6 +665,8 @@ fn compile<B: Bus>(ops: &[crate::BOp], pc0: u32, mem: &JitMem, guards: &mut Vec<
     let mut g = Gen {
         a,
         mem,
+        slots,
+        helpers,
         exit,
         h_read: h_read::<B> as usize as u64,
         h_write: h_write::<B> as usize as u64,
@@ -1001,7 +1105,8 @@ fn compile<B: Bus>(ops: &[crate::BOp], pc0: u32, mem: &JitMem, guards: &mut Vec<
             }
             // ---- everything else: the interpreter's executor for this one op
             other => {
-                let p: &'static Fast = Box::leak(Box::new(other));
+                g.helpers.push(Box::new(other));
+                let p = g.helpers.last().unwrap().as_ref() as *const Fast;
                 g.a.mov_x(0, CTX);
                 g.a.mov64(1, p as *const Fast as u64);
                 g.idx_w2(idx);
@@ -1076,6 +1181,55 @@ mod tests {
         for _ in 0..HOT { j.entry::<Memory>(id, ops, pc, mem); }
         j.entry::<Memory>(id, ops, pc, mem).unwrap().0
     }
+    #[cfg(target_os = "android")]
+    #[test]
+    fn android_cache_publishes_rx_pages_without_writable_executable_memory() {
+        let mut cache = CodeCache::new(64 << 10).unwrap();
+        let first = cache.write(&[0xd65f03c0]).unwrap() as usize; // RET
+        let second = cache.write(&[0xd65f03c0]).unwrap() as usize;
+        assert_eq!(second - first, cache.page);
+        let maps = std::fs::read_to_string("/proc/self/maps").unwrap();
+        for address in [first, second] {
+            let permissions = maps.lines().find_map(|line| {
+                let mut fields = line.split_whitespace();
+                let mut range = fields.next()?.split('-');
+                let start = usize::from_str_radix(range.next()?, 16).ok()?;
+                let end = usize::from_str_radix(range.next()?, 16).ok()?;
+                (start <= address && address < end).then(|| fields.next().unwrap())
+            }).unwrap();
+            assert_eq!(permissions, "r-xp");
+        }
+        while cache.write(&[0xd65f03c0]).is_some() {}
+        assert_eq!(cache.used, cache.size);
+    }
+
+    #[test]
+    fn cache_reset_releases_auxiliary_allocations_and_reuses_code() {
+        let mut bus = Memory::new(); let mem = bus.jit_mem().unwrap();
+        let mut j = Jit::new(false).unwrap();
+        for _ in 0..20 {
+            let code = hot(&mut j, 0, 0, &[op(Fast::Goto { target: 32 })], &mem);
+            let mut cpu = Cpu::new(0);
+            assert_eq!(unsafe { run(code, &mut cpu, &mut bus, &mem, 0, 1) }.0, 1);
+            assert!(!j.slots.is_empty());
+            j.reset();
+            assert!(j.state.is_empty() && j.guards.is_empty() && j.slots.is_empty() && j.helpers.is_empty());
+            assert_eq!(j.cache.used, 0);
+        }
+    }
+
+    #[test]
+    fn helper_panics_leave_generated_frames_before_unwinding() {
+        let mut bus = Memory::new(); let mem = bus.jit_mem().unwrap();
+        let mut j = Jit::new(false).unwrap();
+        let code = hot(&mut j, 0, 0, &[op(Fast::Ld { d: 0, b: Base::Reg(1), off: 0, w: 4, signed: false })], &mem);
+        let mut cpu = Cpu::new(0); cpu.regs[1] = 1000;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            unsafe { run(code, &mut cpu, &mut bus, &mem, 0, 1); }
+        }));
+        assert!(result.is_err());
+    }
+
     #[test]
     fn ram_chain_rejects_changed_target_and_respects_budget() {
         let mut bus = Memory::new(); let mem = bus.jit_mem().unwrap();
