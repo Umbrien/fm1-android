@@ -258,6 +258,8 @@ class EngineController(context: Context) {
         }
         val result = JSONObject().put("capturedAtElapsedNanos", SystemClock.elapsedRealtimeNanos())
             .put("running", running()).put("generation", audioGeneration)
+            .put("ready", ready).put("foreground", foreground).put("paused", paused)
+            .put("closed", closed).put("status", status)
             .put("producedFrames", producedFrames).put("acceptedGeneratedFrames", outputFrames)
             .put("acceptedTotalFrames", submittedFrames).put("underflowFrames", underflowFrames)
             .put("underflowEvents", underflowEvents).put("writeError", audioWriteError)

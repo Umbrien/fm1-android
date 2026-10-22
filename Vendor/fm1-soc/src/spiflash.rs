@@ -77,7 +77,11 @@ impl SpiFlash {
                 self.mem[a] &= *b;
             }
             let a = self.addr as usize & (FLASH_SIZE - 1);
-            self.changed = Some((a, (a + self.pending_prog.len()).min(FLASH_SIZE)));
+            // The existing chip model wraps addresses. A single dirty span must
+            // conservatively include both sides when a program crosses its end.
+            self.changed = Some(if self.pending_prog.len() > FLASH_SIZE - a {
+                (0, FLASH_SIZE)
+            } else { (a, a + self.pending_prog.len()) });
             self.pending_prog.clear();
             self.wel = false;
         }

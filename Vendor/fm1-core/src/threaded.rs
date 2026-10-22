@@ -145,6 +145,7 @@ pub(super) fn run<B:Bus>(cpu:&mut Cpu,bus:&mut B,block:usize,pc:u32,budget:u32,p
     let room = bus.tick_room().saturating_add(u64::from(prepaid)).min(max_count as u64).min(budget as u64).min(u32::MAX as u64) as u32;
     if room == 0 { return None; }
     let mem = bus.thread_mem()?;
+    let xip_version = bus.xip_writes();
     let cpu_ptr=cpu as *mut Cpu;
     let mut state = State { regs:unsafe{std::ptr::addr_of_mut!((*cpu_ptr).regs).cast()},
         flags:unsafe{std::ptr::addr_of_mut!((*cpu_ptr).flags)},sp:unsafe{std::ptr::addr_of_mut!((*cpu_ptr).sp)},rets:unsafe{std::ptr::addr_of_mut!((*cpu_ptr).rets)},
@@ -167,7 +168,8 @@ pub(super) fn run<B:Bus>(cpu:&mut Cpu,bus:&mut B,block:usize,pc:u32,budget:u32,p
         std::panic::resume_unwind(*payload);
     }
     if state.retired != 0 { bus.add_ticks((state.retired - u32::from(prepaid) - state.ticks_spent) as u64); }
-    Some(Outcome {retired:state.retired,pc:state.pc,block:state.block as usize,index:state.index,partial:state.status != 0})
+    Some(Outcome {retired:state.retired,pc:state.pc,block:state.block as usize,index:state.index,
+        partial:state.status != 0 && bus.xip_writes() == xip_version})
 }
 // Only plain operations arrive here; C retains raw pointers, not Rust references. Flush
 // their precise instruction tick before the reference implementation can touch MMIO.
@@ -185,8 +187,10 @@ unsafe fn plain_helper_inner<B:Bus>(state:&mut State)->u32 {
     state.ticks_spent=ticks;
     let fast=cpu.bops[state.index as usize].fast;
     let next=cpu.thread_ops[state.index as usize].next;
+    let xip_version=bus.xip_writes();
     let pc=cpu.exec_fast(bus,&fast,next).unwrap_or(next);
     state.max_ops=(state.retired as u64+1+bus.tick_room()).min(state.limit as u64) as u32;
+    if bus.xip_writes()!=xip_version {state.max_ops=state.retired+1;}
     // Refresh pointers after the exclusive Rust reborrow. The C loop reloads its
     // architectural locals before resuming; cache allocations never change here.
     let cpu_ptr=cpu as *mut Cpu;

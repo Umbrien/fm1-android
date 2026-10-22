@@ -74,6 +74,7 @@ pub const NLED: usize = 19;
 /// The pad LED chain: pad p is LED `PAD_SLOT[p]` in the chain.
 const PAD_SLOT: [usize; NPAD] = [0, 15, 14, 13, 12, 11, 10, 9, 1, 2, 3, 4, 5, 6, 7, 8];
 
+#[derive(Clone, PartialEq)]
 pub struct Panel {
     /// the 595 chain as shifted (the last 4 bytes) and as latched
     sr: u32,

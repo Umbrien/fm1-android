@@ -9,10 +9,11 @@
 //! * TIMER4 `0x10800`: free-running 24 MHz time base (CNT at +4);
 //! * TIMER5 `0x10900`: 10 kHz tick (PRD at 6 MHz), pending CON bit 15,
 //!   acknowledged by writing bit 14, IRQ 63;
-//! * ALNK0 `0x12E00`: I2S out, double-buffered DMA of `LEN` int32 words per
-//!   half (L/R, a 24-bit sample in the low bits of each word) at 44.1 kHz; a finished half sets
-//!   CON2 bit 7 (cleared by writing bit 3), CON0 bit 15 = the half playing,
-//!   IRQ 11;
+//! * ALNK0 `0x12E00`: four synchronous I2S DMA channels, `LEN` int32 words per
+//!   half (L/R, a 24-bit sample in the low bits of each word) at 44.1 kHz.
+//!   CON1 channel nibbles: bits0..1 mode (0 off), bit2 32-bit words, bit3 RX. A finished channel sets
+//!   CON2 bit(4+channel), cleared by writing bit(channel); CON0 bit15 is
+//!   the half playing, IRQ11. FM-1 connects TX3 to its DAC and has silent RX;
 //! * SARADC `0x13100`: CON (start = bit 6, done = bit 7, channel bits 8-11),
 //!   RES = 10-bit value — MASTER pot on ch 4, battery on ch 3;
 //! * the interrupt controller: enable/priority nibbles at `0x1EEF100` for cpu0 and
@@ -59,7 +60,7 @@ const MIDI_BAUD: u64 = 31_250;
 const MIDI_QUEUE_MAX: usize = 3125;
 
 /// UART1's receive side (see the module notes).
-#[derive(Default)]
+#[derive(Clone, PartialEq, Default)]
 struct Uart {
     con0: u32,
     rxsadr: u32,
@@ -90,7 +91,7 @@ const TMR_DIV: [u64; 16] = [1, 4, 16, 64, 2, 8, 32, 128, 256, 1024, 4096, 16384,
 /// crystal, bits 4-7 the prescaler, bit 15 pending, written bit 14 clears it), CNT (where it
 /// counts from), PRD (the count that raises the interrupt and restarts). The stock firmware
 /// runs its usr_timer engine (the 2 ms ADC scan, key scan) on TIMER1.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, PartialEq, Default)]
 struct Tmr {
     con: u32,
     prd: u32,
@@ -125,6 +126,7 @@ const ENC: [[u8; 4]; 7] = [
 /// Quadrature states in turning order: (A, B).
 const GRAY: [(u8, u8); 4] = [(0, 0), (1, 0), (1, 1), (0, 1)];
 
+#[derive(Clone, PartialEq)]
 pub struct Periph {
     pub cycles: u64,
     /// Emulated CPU clock (cycles per second of firmware time).
@@ -158,7 +160,7 @@ pub struct Periph {
     alnk_con1: u32,
     alnk_con3: u32,
     alnk_pend: u32,
-    alnk_adr: u32,
+    alnk_adr: [u32; 4],
     alnk_len: u32,
     alnk_half: u32,
     alnk_next: u64,
@@ -266,7 +268,7 @@ impl Default for Periph {
             alnk_con1: 0,
             alnk_con3: 0,
             alnk_pend: 0,
-            alnk_adr: 0,
+            alnk_adr: [0; 4],
             alnk_len: 0,
             alnk_half: 0,
             alnk_next: u64::MAX,
@@ -319,12 +321,34 @@ impl Default for Periph {
 pub struct Due {
     /// A half buffer finished playing: (RAM address, words).
     pub audio_half: Option<(u32, u32)>,
+    /// Bytes per TX sample word (2 for 16-bit, 4 for 24-bit in int32).
+    pub audio_word_bytes: u8,
+    /// Completed input halves, channel order. FM-1 has no analogue input, so
+    /// the bus writes silence before dispatching the shared ALNK interrupt.
+    pub audio_rx: [Option<(u32, u32, u8)>; 4],
     /// A UART byte the RX DMA wrote: (address, byte).
     pub uart_rx: Option<(u32, u8)>,
     pub actions: Vec<Action>,
 }
 
+/// Hardware counters expose the low word of the exact integer quotient. Avoid
+/// a software 128-bit division while the product fits the host's native word.
+#[inline]
+fn scaled_count(elapsed: u64, rate: u64, clock: u64) -> u32 {
+    match elapsed.checked_mul(rate) {
+        Some(product) => (product / clock) as u32,
+        None => (elapsed as u128 * rate as u128 / clock as u128) as u32,
+    }
+}
+
 impl Periph {
+    /// TIMER4 value without CPU0's optional polling acceleration. CPU1 has a
+    /// frozen view of the shared clock and must not advance it by reading.
+    pub(crate) fn timer4_count(&self) -> u32 {
+        if self.t4_con & 1 == 0 { 0 }
+        else { scaled_count(self.cycles - self.t4_base, T4_HZ, self.hz) }
+    }
+
     pub fn ms(&self) -> u64 {
         self.cycles * 1000 / self.hz
     }
@@ -436,9 +460,19 @@ impl Periph {
         }
         if self.cycles >= self.alnk_next {
             let words = self.alnk_len.max(2);
-            due.audio_half = Some((self.alnk_adr.wrapping_add(self.alnk_half * words * 4), words));
+            // All channels use one LRCLK and buffer phase. The local device HAL
+            // programs 0x5000 for TX3 and 0x500d for RX0+TX3 (Open V13's
+            // app/board/audio.c and fm1_audio.h); bit3 of each nibble selects RX.
+            for channel in 0..4 {
+                let config = (self.alnk_con1 >> (4 * channel)) & 15;
+                if config & 3 == 0 { continue; }
+                let width = if config & 4 != 0 { 4 } else { 2 };
+                let address = self.alnk_adr[channel].wrapping_add(self.alnk_half * words * width);
+                if config & 8 != 0 { due.audio_rx[channel] = Some((address, words, width as u8)); }
+                else if channel == 3 { due.audio_half = Some((address, words)); due.audio_word_bytes = width as u8; }
+                self.alnk_pend |= 0x10 << channel;
+            }
             self.alnk_half ^= 1;
-            self.alnk_pend |= 0x80;
             self.alnk_next += self.half_period();
             self.audio_halves += 1;
         }
@@ -672,7 +706,7 @@ impl Periph {
                     }
                     self.last_cnt_read = self.cycles;
                 }
-                ((self.cycles - self.t4_base) as u128 * T4_HZ as u128 / self.hz as u128) as u32
+                self.timer4_count()
             }
             0x10400 | 0x10500 | 0x10600 | 0x10700 => {
                 let t = &self.tmr[((addr - 0x10400) >> 8) as usize];
@@ -703,7 +737,7 @@ impl Periph {
             0x12e04 => self.alnk_con1,
             0x12e08 => self.alnk_pend,
             0x12e0c => self.alnk_con3,
-            0x12e1c => self.alnk_adr,
+            0x12e10 | 0x12e14 | 0x12e18 | 0x12e1c => self.alnk_adr[((addr - 0x12e10) / 4) as usize],
             0x12e20 => self.alnk_len,
             // conversions are instant: done (bit 7) once started. Bit 4 reads as written
             // (Felucca's `|= 0x40` read-modify-write must keep it); the stock scan's "skip
@@ -726,7 +760,7 @@ impl Periph {
                     0
                 } else {
                     let into = (self.cycles - self.tick_start).min(self.tick_period());
-                    (into as u128 * self.tick_prd as u128 / self.tick_period() as u128) as u32
+                    scaled_count(into, self.tick_prd as u64, self.tick_period())
                 }
             }
             0x1eef0f4 => self.tick_prd,
@@ -753,9 +787,14 @@ impl Periph {
         // next instruction (leaving compiled code). Not for the FM-1's ADC: its conversions are
         // instant, so a write there changes only whether IRQ 24 is raised (then it does).
         // OberVave converts ~1 M times a second, 5 writes each: every one left the JIT.
-        if !(matches!(addr, 0x13100 | 0x13104) && self.board != crate::Board::Smk37) {
-            self.next_due = 0;
-        }
+        // FM-1 GPIO writes update the matrix/LED latch synchronously at the
+        // helper's exact cycle. They cannot change a timer, DMA deadline or IRQ.
+        // Keeping the existing deadline avoids forcing a scheduler round trip
+        // for every bit clocked into the front-panel shift register. Flash CS
+        // effects are handled by Soc and executable-write barriers independently.
+        let synchronous = self.board != crate::Board::Smk37 &&
+            (matches!(addr, 0x13100 | 0x13104) || (0x50000..=0x503ff).contains(&addr));
+        if !synchronous { self.next_due = 0; }
         match addr {
             0x10800 => {
                 if self.t4_con & 1 == 0 && v & 1 != 0 {
@@ -810,7 +849,7 @@ impl Periph {
             0x12e04 => self.alnk_con1 = v & 0xffff,
             0x12e08 => self.alnk_pend &= !((v & 0xf) << 4), // bits 0-3 clear pendings 4-7
             0x12e0c => self.alnk_con3 = v & 0xff,
-            0x12e1c => self.alnk_adr = v,
+            0x12e10 | 0x12e14 | 0x12e18 | 0x12e1c => self.alnk_adr[((addr - 0x12e10) / 4) as usize] = v,
             0x12e20 => self.alnk_len = v & 0xffff,
             0x13100 => {
                 // bit 6 with bit 4 (enable) starts a conversion, which finishes at once; with
@@ -1150,6 +1189,104 @@ fn note_name(n: &str) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alnk_channel_modes_widths_pending_masks_and_shared_phase_are_exact() {
+        for channel in 0..4 { for config in 0..16 { for words in [0, 1, 2, 6, 255, 256, 65535] {
+            let mut p = Periph::default();
+            let base = 0xffff_fff0u32;
+            p.write(0x12e10 + channel * 4, base);
+            p.write(0x12e20, words);
+            p.write(0x12e04, config << (channel * 4));
+            p.write(0x12e00, 0x800);
+            let period = p.half_period();
+            let before = p.advance(period - 1);
+            assert!(before.audio_half.is_none() && before.audio_rx.iter().all(Option::is_none));
+            assert_eq!(p.read(0x12e08), Some(0));
+            for half in 0..2 {
+                let event = p.advance(if half == 0 { 1 } else { period });
+                let enabled = config & 3 != 0;
+                let width = if config & 4 != 0 { 4 } else { 2 };
+                let address = base.wrapping_add(half * words.max(2) * width);
+                let mut rx = [None; 4];
+                if enabled && config & 8 != 0 { rx[channel as usize] = Some((address, words.max(2), width as u8)); }
+                assert_eq!(event.audio_rx, rx);
+                assert_eq!(event.audio_half,
+                    (enabled && config & 8 == 0 && channel == 3).then_some((address, words.max(2))));
+                if event.audio_half.is_some() { assert_eq!(event.audio_word_bytes, width as u8); }
+                assert_eq!(p.read(0x12e08), Some(if enabled { 0x10 << channel } else { 0 }));
+                assert_eq!(p.read(0x12e00).unwrap() >> 15, (half ^ 1) & 1);
+                assert_eq!(p.audio_halves, half as u64 + 1);
+                p.write(0x12e08, 1 << channel);
+                assert_eq!(p.read(0x12e08), Some(0));
+            }
+            p.write(0x12e00, 0);
+            assert!(p.advance(period * 2).audio_rx.iter().all(Option::is_none));
+            assert_eq!(p.audio_halves, 2);
+        }}}
+        let mut p = Periph::default();
+        p.write(0x12e20, 4); p.write(0x12e04, 0xb6d5); p.write(0x12e00, 0x800);
+        let event = p.advance(p.half_period());
+        assert_eq!(p.read(0x12e08), Some(0xf0));
+        assert_eq!(event.audio_rx, [None, Some((0,4,4)), None, Some((0,4,2))]);
+        assert!(event.audio_half.is_none()); // RX3 never produces another output stream.
+        p.write(0x12e08, 0xa); assert_eq!(p.read(0x12e08), Some(0x50));
+        p.write(0x12e08, 0x50); assert_eq!(p.read(0x12e08), Some(0x50));
+        p.write(0x12e08, 5); assert_eq!(p.read(0x12e08), Some(0));
+        p.write(0x12e00, 0); p.write(0x12e00, 0x800);
+        assert_eq!(p.read(0x12e00).unwrap() >> 15, 0);
+        p.advance(p.half_period());
+        assert_eq!(p.read(0x12e00).unwrap() >> 15, 1);
+    }
+
+    #[test]
+    fn synchronous_gpio_keeps_deadlines_and_matches_forced_service_at_event_edges() {
+        let mut initial = Periph::default();
+        for (a,v) in [(0x10508,5),(0x10500,9),(0x10908,3),(0x10900,1),
+            (0x12e20,2),(0x12e00,0x800),(0x1eef0f4,100),(0x1eef0ec,1),
+            (0x1211c,0x1000),(0x12120,0x1008),(0x12124,1),(0x12100,0x49)] {
+            initial.write(a,v);
+        }
+        initial.apply(&Action::Midi { b: 0x90 });
+        initial.script.push_back((80,Action::Key { id:21,down:true }));
+        initial.advance(0);
+        let deadline = initial.next_due;
+        assert!(deadline > 0);
+        for addr in (0x50000..=0x503fc).step_by(4) {
+            for cycles in [0,1,49,50,51,79,80,81,119,120,121,10_000,76_800] {
+                let mut current = initial.clone(); current.cycles = cycles;
+                let mut legacy = current.clone();
+                for value in [0,0x10,0x18,0x12,0x600,0xffff,0] {
+                    assert_eq!(current.write(addr,value),legacy.write(addr,value));
+                    assert_eq!(current.next_due,deadline);
+                    // Reproduce the former unconditional scheduling invalidation.
+                    legacy.next_due = 0;
+                    let a=current.advance(0); let b=legacy.advance(0);
+                    assert_eq!((a.audio_half,a.audio_word_bytes,a.audio_rx,a.uart_rx,a.actions),(b.audio_half,b.audio_word_bytes,b.audio_rx,b.uart_rx,b.actions));
+                    assert!(current == legacy,"GPIO {addr:x} cycle {cycles}");
+                    // Use the next current deadline for subsequent writes below.
+                    if current.next_due != deadline { break; }
+                }
+            }
+        }
+        // Timer, DMA and interrupt-controller programming retain the barrier.
+        for addr in [0x10500,0x10900,0x10904,0x12e00,0x1eef100,0x1eef1a0] {
+            let mut p=initial.clone(); p.write(addr,0); assert_eq!(p.next_due,0);
+        }
+    }
+
+    #[test]
+    fn scaled_hardware_counters_match_full_precision_across_overflow_boundary() {
+        for elapsed in [0, 1, 239, 240, u32::MAX as u64, u64::MAX / T4_HZ,
+            u64::MAX / T4_HZ + 1, u64::MAX] {
+            for rate in [0, 1, T4_HZ, u32::MAX as u64, u64::MAX] {
+                for clock in [1, 3, CPU_HZ, u64::MAX] {
+                    assert_eq!(scaled_count(elapsed, rate, clock),
+                        (elapsed as u128 * rate as u128 / clock as u128) as u32);
+                }
+            }
+        }
+    }
 
     /// Advance to `cycle`, collecting the bytes the UART's DMA wrote.
     fn run_to(p: &mut Periph, cycle: u64, got: &mut Vec<(u32, u8)>) {

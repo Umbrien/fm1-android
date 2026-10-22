@@ -8,6 +8,9 @@
 //! bytes wins ties against sibling masks.
 
 mod fpu;
+mod sreg;
+mod saturating;
+mod pair_extract;
 mod generated_isa;
 pub use fpu::{FALLBACK, FPU};
 pub use generated_isa::ISA;
@@ -203,6 +206,17 @@ pub enum DecodeError {
 
 /// Decode from a zero-extended little-endian window of up to 6 bytes.
 pub fn decode_win(win: u64, addr: u32) -> Result<Instruction, DecodeError> {
+    if saturating::family(win) {
+        let entry = saturating::decode(win).ok_or(DecodeError::UnknownInstruction { raw: win, addr })?;
+        return Ok(Instruction { addr, raw: win, entry });
+    }
+    if pair_extract::family(win) {
+        let entry=pair_extract::decode(win).ok_or(DecodeError::UnknownInstruction{raw:win,addr})?;
+        return Ok(Instruction{addr,raw:win,entry});
+    }
+    if let Some(entry) = sreg::decode(win) {
+        return Ok(Instruction { addr, raw: win, entry });
+    }
     // the FPU first: its encodings never appear in the objdump corpora, and the float
     // compares are the integer ones plus a flag bit the corpus masks may not pin down
     for e in fpu::FPU {
@@ -321,6 +335,74 @@ mod tests {
         let i = le("0000").unwrap();
         assert!(i.has_syntax("nop"));
         assert!(!i.has_syntax("totally not nop"));
+    }
+
+    #[test]
+    fn saturating_scalar_fields_cover_all_registers_and_reject_unknown_controls() {
+        for pair in [false,true] { for sub in [false,true] {
+            for d in 0..16 { for a in 0..16 { for b in 0..16 {
+                let raw = 0xe439 | (u64::from(pair) << 12) | (u64::from(sub) << 19)
+                    | (a << 20) | (b << 24) | (d << 28);
+                for decode in [decode_win,decode_win_cached] {
+                    let insn=decode(raw | 0x1234_0000_0000_0000,0x2000000).unwrap();
+                    assert_eq!(insn.entry.name,"saturating_craw"); assert_eq!(insn.len(),4);
+                    assert_eq!(insn.entry.slots.iter().map(|s|s.value(insn.raw)).collect::<Vec<_>>(),
+                        [d as i64,a as i64,b as i64]);
+                    assert_eq!(insn.syntax().contains(" - "),sub);
+                    assert_eq!(insn.syntax().ends_with('#'),pair);
+                }
+                for bit in [16,17,18] { assert!(decode_win(raw | (1 << bit),0).is_err()); }
+            }}}
+        }}
+    }
+
+    #[test]
+    fn special_register_moves_have_natural_register_nibbles() {
+        let specials = [(0, "reti"), (1, "rete"), (3, "rets"), (5, "psr"),
+            (6, "cnum"), (11, "icfg"), (12, "usp"), (13, "ssp"), (14, "sp")];
+        for (special, name) in specials { for write in [false, true] {
+            if write && special == 6 { continue; } // cnum is read-only.
+            for register in 0..16 {
+                let raw = 0xe064 | if write { 0x800000 } else { 0 }
+                    | ((special | register << 4) as u64) << 24;
+                let syntax = if write { format!("{name} = R") } else { format!("R = {name}") };
+                for suffix in [0, 0x1234_5678_0000_0000] {
+                    for decode in [decode_win, decode_win_cached] {
+                        for address in [0, 0x0200_0100] {
+                            let i = decode(raw | suffix, address).unwrap();
+                            assert_eq!(i.syntax(), syntax, "raw={raw:08x}");
+                            assert_eq!(i.len(), 4);
+                            assert_eq!(i.entry.slots[0].value(i.raw), register as i64,
+                                "raw={raw:08x}");
+                            assert_eq!(i.addr, address);
+                        }
+                    }
+                }
+            }
+        }}
+    }
+
+    #[test]
+    fn pair_extract_canonical_fields_samples_and_reserved_bits() {
+        for (raw,d,lo,n,signed,paired) in [(0xe0a0e1de,14,10,0,false,false),(0x0004f1de,0,0,4,false,true),
+            (0xe8cff1de,14,12,15,true,true),(0xf24ff1de,15,4,47,false,true),
+            (0x008df1de,0,8,13,false,true),(0x396de1de,3,6,29,true,false)] {
+            let i=decode_win(raw,0).unwrap();
+            assert_eq!(i.entry.name,"pair_extract_craw");
+            assert_eq!(i.entry.slots.iter().map(|s|s.value(raw)).collect::<Vec<_>>(),vec![d,lo+1,lo,n]);
+            assert_eq!(i.syntax().contains("(s)"),signed);assert_eq!(i.syntax().ends_with('#'),paired);
+        }
+        for d in 0..16 {for lo in (0..16).step_by(2) {for n in 0..64 {for signed in [false,true] {for paired in [false,true] {
+            let raw=0xe1deu64|((paired as u64)<<12)|d<<28|lo<<20|(n&15)<<16|(n>>4)<<24|(signed as u64)<<27;
+            for decode in [decode_win,decode_win_cached] {
+                let i=decode(raw|0x1234567800000000,0x02000000).unwrap();
+                assert_eq!(i.entry.slots.iter().map(|s|s.value(i.raw)).collect::<Vec<_>>(),vec![d as i64,lo as i64+1,lo as i64,n as i64]);
+                assert_eq!(i.syntax().contains("(s)"),signed);assert_eq!(i.syntax().ends_with('#'),paired);
+            }
+            for reserved in [1<<20,1<<26] {
+                assert!(matches!(decode_win(raw|reserved,0),Err(DecodeError::UnknownInstruction{..})));
+            }
+        }}}}}
     }
 
     #[test]

@@ -101,15 +101,20 @@ impl Asm {
         else { self.mov32(scratch, imm); self.add(rd, rn, scratch); }
     }
     pub fn add(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x0b00_0000 | rm << 16 | rn << 5 | rd); }
+    pub fn adds(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x2b00_0000 | rm << 16 | rn << 5 | rd); }
+    pub fn adcs(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x3a00_0000 | rm << 16 | rn << 5 | rd); }
+    pub fn sbcs(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x7a00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn add_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x8b00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn add_lsl(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x0b00_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
     pub fn add_lsr(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x0b40_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
     pub fn add_x_lsl(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x8b00_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
     pub fn eor_lsr(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x4a40_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
     pub fn sub(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x4b00_0000 | rm << 16 | rn << 5 | rd); }
+    pub fn sub_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0xcb00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn sub_lsl(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x4b00_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
     pub fn subs(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x6b00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn cmp(&mut self, rn: Reg, rm: Reg) { self.subs(ZR, rn, rm); }
+    pub fn cmp_x(&mut self, rn: Reg, rm: Reg) { self.e(0xeb00_001f | rm << 16 | rn << 5); }
     pub fn neg(&mut self, rd: Reg, rm: Reg) { self.sub(rd, ZR, rm); }
     pub fn and(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x0a00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn orr(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x2a00_0000 | rm << 16 | rn << 5 | rd); }
@@ -142,6 +147,14 @@ impl Asm {
     pub fn lsrv(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x1ac0_2400 | rm << 16 | rn << 5 | rd); }
     pub fn asrv(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x1ac0_2800 | rm << 16 | rn << 5 | rd); }
     pub fn lsrv_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x9ac0_2400 | rm << 16 | rn << 5 | rd); }
+    pub fn lslv_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x9ac0_2000 | rm << 16 | rn << 5 | rd); }
+    pub fn asrv_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x9ac0_2800 | rm << 16 | rn << 5 | rd); }
+    pub fn sdiv_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x9ac0_0c00 | rm << 16 | rn << 5 | rd); }
+    pub fn udiv_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x9ac0_0800 | rm << 16 | rn << 5 | rd); }
+    pub fn sdiv(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x1ac0_0c00 | rm << 16 | rn << 5 | rd); }
+    pub fn udiv(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x1ac0_0800 | rm << 16 | rn << 5 | rd); }
+    pub fn sxtw(&mut self, rd: Reg, rn: Reg) { self.e(0x9340_7c00 | rn << 5 | rd); }
+    pub fn rev(&mut self, rd: Reg, rn: Reg) { self.e(0x5ac0_0800 | rn << 5 | rd); }
     pub fn mul(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x1b00_7c00 | rm << 16 | rn << 5 | rd); }
     pub fn umull(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x9ba0_7c00 | rm << 16 | rn << 5 | rd); }
     pub fn smull(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x9b20_7c00 | rm << 16 | rn << 5 | rd); }
@@ -155,6 +168,9 @@ impl Asm {
     // ---------------------------------------------------------------- memory
     pub fn ldr(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(4) && off < 16384); self.e(0xb940_0000 | (off / 4) << 10 | rn << 5 | rt); }
     pub fn str(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(4) && off < 16384); self.e(0xb900_0000 | (off / 4) << 10 | rn << 5 | rt); }
+    /// Bitwise scalar FP loads/stores; no floating-point arithmetic or conversion.
+    pub fn ldr_s(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(4) && off < 16384); self.e(0xbd40_0000 | (off / 4) << 10 | rn << 5 | rt); }
+    pub fn str_s(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(4) && off < 16384); self.e(0xbd00_0000 | (off / 4) << 10 | rn << 5 | rt); }
     pub fn ldrh(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(2) && off < 8192); self.e(0x7940_0000 | (off / 2) << 10 | rn << 5 | rt); }
     pub fn ldr_x(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(8) && off < 32768); self.e(0xf940_0000 | (off / 8) << 10 | rn << 5 | rt); }
     pub fn str_x(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(8) && off < 32768); self.e(0xf900_0000 | (off / 8) << 10 | rn << 5 | rt); }

@@ -216,6 +216,7 @@ extern "C" fn h_write<B: Bus>(ctx: *mut Ctx, addr: u32, v: u32, idx: u32, w: u32
     let bus = unsafe { &mut *(ctx.bus as *mut B) };
     unsafe { sync(ctx, bus, idx) };
     let code = bus.code_writes();
+    let xip = bus.xip_writes();
     match w {
         1 => bus.write8(addr, v as u8),
         2 => bus.write16(addr, v as u16),
@@ -223,7 +224,7 @@ extern "C" fn h_write<B: Bus>(ctx: *mut Ctx, addr: u32, v: u32, idx: u32, w: u32
     }
     // (a write to a word of RAM code: this region may include what it changed, so leave; the
     // next entry checks the region against memory)
-    if bus.next_tick_due() || bus.code_writes() != code {
+    if bus.next_tick_due() || bus.code_writes() != code || bus.xip_writes() != xip {
         ctx.brk = 1;
     }
 }
@@ -240,8 +241,10 @@ extern "C" fn h_op<B: Bus, const PROF: bool>(ctx: *mut Ctx, op: *const Fast, idx
     if PROF {
         cpu.profile_helper(unsafe { &*op });
     }
+    let code = bus.code_writes();
+    let xip = bus.xip_writes();
     let j = cpu.exec_fast(bus, unsafe { &*op }, next_pc);
-    if bus.next_tick_due() {
+    if bus.next_tick_due() || bus.code_writes() != code || bus.xip_writes() != xip {
         ctx.brk = 1;
     }
     match j {

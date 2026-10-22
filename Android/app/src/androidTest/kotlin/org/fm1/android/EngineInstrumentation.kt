@@ -1065,7 +1065,7 @@ class EngineInstrumentation : Instrumentation() {
             require(controller.selectedKind == 12, "FM-1+VA did not load")
             delay(3000)
             val before = controller.audioDiagnostics()
-            require(before.getBoolean("running"), "Benchmark is not foreground and running; unlock the phone and leave its benchmark Activity visible")
+            require(before.getBoolean("running"), "Benchmark is not running after warmup: $before")
             val start = SystemClock.elapsedRealtime()
             val slices = JSONArray()
             repeat(performanceSeconds / 5) {

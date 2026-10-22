@@ -169,6 +169,25 @@ pub enum Instrument {
     Native(native_sloop::Native),
 }
 impl Instrument {
+    /// Local benchmark diagnostics. Profile helper collection must be enabled with
+    /// FM1_PROFILE before creation; timed runs should leave it disabled.
+    pub fn compiler_profile_json(&self) -> String {
+        match self {
+            Self::Interpreter(m) => {
+                fn cpu(c: &Cpu) -> String {
+                    format!("{{\"retired\":{},\"jit\":{}}}", c.insn_count, c.jit_profile_json())
+                }
+                let slices = m.soc.cpu1_slice_profile.as_ref().map(|h| h.iter().enumerate()
+                    .filter(|(_, v)| v.0 != 0).map(|(i, v)| format!("{{\"log2ExclusiveUpperBound\":{i},\"calls\":{},\"retired\":{}}}", v.0, v.1)).collect::<Vec<_>>().join(",")).unwrap_or_default();
+                let failures = m.soc.cpu1_fixed_point_failures.as_ref().map(|h| h.iter()
+                    .map(|(reason, count)| format!("\"{reason}\":{count}"))
+                    .collect::<Vec<_>>().join(",")).unwrap_or_default();
+                format!("{{\"cpu0\":{},\"cpu1\":{},\"halted\":{},\"mmio\":{},\"ramCodeWrites\":{},\"cpu1Slices\":[{slices}],\"cpu1FixedPoints\":{:?},\"cpu1FixedPointFailures\":{{{failures}}}}}", cpu(&m.cpu), m.cpu1.as_ref().map_or("null".into(), cpu), m.halted, m.soc.mmio_profile_json(), m.soc.ram.code_writes, m.soc.cpu1_fixed_points)
+            }
+            #[allow(unreachable_patterns)]
+            _ => "null".into(),
+        }
+    }
     fn load(bytes: &[u8]) -> Result<Self, String> {
         #[cfg(any(
             fm1_native_sloop,
@@ -250,6 +269,15 @@ pub unsafe extern "C" fn instrument_backend(m: *const Instrument) -> u32 {
 pub unsafe extern "C" fn instrument_jit_instructions(m: *const Instrument) -> u64 {
     match m.as_ref() {
         Some(Instrument::Interpreter(m)) => m.cpu.jit_insns + m.cpu1.as_ref().map_or(0, |c| c.jit_insns),
+        _ => 0,
+    }
+}
+/// Native code-generation/publication time accumulated by the current CPUs.
+#[no_mangle]
+pub unsafe extern "C" fn instrument_jit_compilation_nanoseconds(m: *const Instrument) -> u64 {
+    match m.as_ref() {
+        Some(Instrument::Interpreter(m)) => m.cpu.jit_compilation_nanoseconds()
+            .saturating_add(m.cpu1.as_ref().map_or(0, Cpu::jit_compilation_nanoseconds)),
         _ => 0,
     }
 }
@@ -603,18 +631,32 @@ pub unsafe extern "C" fn instrument_restore(
     let Instrument::Interpreter(m) = m else {
         unreachable!()
     };
-    if len != m.soc.flash.mem.len() {
-        return false;
-    }
-    m.soc
-        .flash
-        .mem
-        .copy_from_slice(std::slice::from_raw_parts(data, len));
-    true
+    m.soc.restore_flash(std::slice::from_raw_parts(data, len))
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn binary_restore_abi_publishes_changed_xip_and_rejects_bad_lengths() {
+        let mut soc = Soc::new(RAM, vec![0x40, 0x2a, 0, 0, 0, 0, 0, 0]);
+        soc.flash.mem[fm1_soc::XIP_FLASH_OFFSET..fm1_soc::XIP_FLASH_OFFSET + 8].copy_from_slice(&soc.xip);
+        let mut machine = Instrument::Interpreter(Interpreter { cpu: Cpu::new(fm1_soc::XIP_BASE), cpu1: None,
+            soc, tick: false, audio: VecDeque::new(), halted: false, kind: 13 });
+        let Instrument::Interpreter(binary) = &mut machine else { unreachable!() };
+        binary.cpu.step(&mut binary.soc).unwrap();
+        assert_eq!(binary.cpu.regs[0], 10);
+        let mut image = binary.soc.flash.mem.clone();
+        image[fm1_soc::XIP_FLASH_OFFSET..fm1_soc::XIP_FLASH_OFFSET + 2].copy_from_slice(&0x2440u16.to_le_bytes());
+        assert!(!unsafe { instrument_restore(&mut machine, image.as_ptr(), image.len() - 1) });
+        let Instrument::Interpreter(binary) = &mut machine else { unreachable!() };
+        assert_eq!(binary.soc.read16(fm1_soc::XIP_BASE), 0x2a40);
+        assert!(unsafe { instrument_restore(&mut machine, image.as_ptr(), image.len()) });
+        let Instrument::Interpreter(binary) = &mut machine else { unreachable!() };
+        binary.cpu.pc = fm1_soc::XIP_BASE;
+        binary.cpu.step(&mut binary.soc).unwrap();
+        assert_eq!(binary.cpu.regs[0], 4);
+        assert_eq!(binary.soc.flash.mem, image);
+    }
     #[test]
     fn malformed_packages_fail_without_unwinding_abi() {
         for n in [0, 959, 960, 1024, 4096, 65536] {
@@ -900,6 +942,58 @@ mod compiler_tests {
     use super::*;
 
     #[test]
+    fn fm1va_compiler_matches_reference_polyphony_and_sound_modes() {
+        let Some(path) = std::env::var_os("FM1_VA_PACKAGE") else { return; };
+        let bytes = std::fs::read(path).unwrap();
+        for mode in 0..3 {
+            let mut a = Interpreter::load(&bytes, false).unwrap();
+            let mut b = Interpreter::load(&bytes, true).unwrap();
+            fn advance(a: &mut Interpreter, b: &mut Interpreter, blocks: usize) {
+                for _ in 0..blocks {
+                    let (mut x, mut y) = ([0.0; 1024], [0.0; 1024]);
+                    assert_eq!(a.render(&mut x, 4_000_000), b.render(&mut y, 4_000_000));
+                    assert_eq!(x, y, "PCM divergence at cpu0 pc {:x}/{:x}", a.cpu.pc, b.cpu.pc);
+                    assert!(!a.halted && !b.halted);
+                    assert!(a.cpu.architectural_state() == b.cpu.architectural_state(), "CPU0 architectural divergence");
+                    assert!(a.cpu1.as_ref().map(Cpu::architectural_state) == b.cpu1.as_ref().map(Cpu::architectural_state),
+                        "CPU1 architectural divergence");
+                    assert_eq!(a.cpu.insn_count, b.cpu.insn_count);
+                    assert_eq!(a.cpu1.as_ref().map(|c| c.insn_count), b.cpu1.as_ref().map(|c| c.insn_count));
+                    assert_eq!(a.soc.periph.cycles, b.soc.periph.cycles);
+                }
+            }
+            fn key(a: &mut Interpreter, b: &mut Interpreter, id: u8, down: bool) {
+                for m in [a, b] { m.soc.periph.apply(&Action::Key { id, down }); }
+            }
+            fn press(a: &mut Interpreter, b: &mut Interpreter, id: u8) {
+                key(a, b, id, true); advance(a, b, 20);
+                key(a, b, id, false); advance(a, b, 20);
+            }
+            fn turn(a: &mut Interpreter, b: &mut Interpreter, delta: i32) {
+                for m in [&mut *a, &mut *b] { m.soc.periph.apply(&Action::Enc { enc: 0, clicks: delta }); }
+                advance(a, b, 30);
+            }
+            advance(&mut a, &mut b, 200);
+            if mode > 0 {
+                press(&mut a, &mut b, 6); turn(&mut a, &mut b, 32); turn(&mut a, &mut b, -1);
+                press(&mut a, &mut b, 3); turn(&mut a, &mut b, 1); press(&mut a, &mut b, 3);
+                for _ in 0..mode { turn(&mut a, &mut b, 1); }
+                press(&mut a, &mut b, 3); press(&mut a, &mut b, 8);
+            }
+            for _ in 0..3 {
+                for id in [21, 25, 28, 32] { key(&mut a, &mut b, id, true); }
+                advance(&mut a, &mut b, 75);
+                for id in [21, 25, 28, 32] { key(&mut a, &mut b, id, false); }
+                advance(&mut a, &mut b, 25);
+            }
+            assert_eq!(a.cpu.regs, b.cpu.regs, "mode {mode} cpu0");
+            assert_eq!(a.cpu1.as_ref().map(|c| c.regs), b.cpu1.as_ref().map(|c| c.regs), "mode {mode} cpu1");
+            assert_eq!(a.soc.periph.cycles, b.soc.periph.cycles, "mode {mode} clock");
+            eprintln!("FM-1+VA mode {mode}: exact polyphonic PCM, CPU state and clock match");
+        }
+    }
+
+    #[test]
     fn binary_compiler_matches_reference_firmware_audio_display_and_flash() {
         let Some(paths) = std::env::var_os("FM1_COMPILER_PACKAGES") else { return; };
         for path in std::env::split_paths(&paths) {
@@ -908,9 +1002,13 @@ mod compiler_tests {
             let mut compiled = Interpreter::load(&bytes, true).unwrap();
             let (mut a, mut b) = ([0f32; 1024], [0f32; 1024]);
             let (mut reference_time, mut compiled_time) = (std::time::Duration::ZERO, std::time::Duration::ZERO);
+            let (mut total_frames, mut steady_frames) = (0usize, 0usize);
+            let mut steady_peak = 0.0f32;
             for step in 0..300 {
                 if step == 200 {
                     for engine in [&mut reference, &mut compiled] {
+                        // A black-key drum trigger also exercises X0X's default kit.
+                        engine.soc.periph.apply(&Action::Key { id: 15, down: true });
                         engine.soc.periph.apply(&Action::Key { id: 21, down: true });
                     }
                 }
@@ -921,9 +1019,25 @@ mod compiler_tests {
                 let m = compiled.render(&mut b, 4_000_000);
                 compiled_time += start.elapsed();
                 assert!(!reference.halted && !compiled.halted, "{}: halt at {step}", path.display());
+                assert!(reference.cpu.architectural_state() == compiled.cpu.architectural_state(),
+                    "{}: CPU0 state at {step}", path.display());
+                assert!(reference.cpu1.as_ref().map(Cpu::architectural_state) == compiled.cpu1.as_ref().map(Cpu::architectural_state),
+                    "{}: CPU1 state at {step}", path.display());
+                assert_eq!(reference.cpu.insn_count, compiled.cpu.insn_count);
+                assert_eq!(reference.cpu1.as_ref().map(|c| c.insn_count), compiled.cpu1.as_ref().map(|c| c.insn_count));
+                assert_eq!(reference.soc.periph.cycles, compiled.soc.periph.cycles);
                 assert_eq!(n, m, "{}: frame count at {step}", path.display());
                 assert!(a == b, "{}: PCM at {step}, first mismatch {:?}", path.display(), a.iter().zip(b).position(|(a,b)| *a != b));
+                total_frames += n;
+                if step >= 200 {
+                    steady_frames += n;
+                    for &sample in &a[..n * 2] { steady_peak = steady_peak.max(sample.abs()); }
+                }
             }
+            // Matching an interpreter stuck in a boot loop is not audio compatibility.
+            assert_eq!(steady_frames, 100 * 512,
+                "{}: incomplete audio after boot ({total_frames} total frames)", path.display());
+            assert!(steady_peak > 0.00001, "{}: silent instrument after note input", path.display());
             let compiled = Box::into_raw(Box::new(Instrument::Interpreter(compiled)));
             let reference = Box::into_raw(Box::new(Instrument::Interpreter(reference)));
             unsafe {
