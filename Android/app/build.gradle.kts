@@ -11,11 +11,22 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "0.2.0"
-        testApplicationId = "org.fm1.android.tests"
+        manifestPlaceholders["appLabel"] = "FM-1"
+        testApplicationId = if (providers.gradleProperty("fm1Performance").isPresent)
+            "org.fm1.android.benchmark.tests" else "org.fm1.android.tests"
         testInstrumentationRunner = "org.fm1.android.EngineInstrumentation"
         ndk { abiFilters += "arm64-v8a" }
     }
-    buildTypes { getByName("debug") { signingConfig = null } }
+    buildTypes {
+        getByName("debug") { signingConfig = null }
+        create("benchmark") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".benchmark"
+            manifestPlaceholders["appLabel"] = "FM-1 Benchmark"
+            matchingFallbacks += "debug"
+        }
+    }
+    testBuildType = if (providers.gradleProperty("fm1Performance").isPresent) "benchmark" else "debug"
     sourceSets.getByName("main") {
         assets.srcDir(rootProject.layout.buildDirectory.dir("assets"))
         jniLibs.srcDir(rootProject.layout.buildDirectory.dir("lib"))

@@ -235,9 +235,31 @@ class MainActivity : AppCompatActivity(), EngineController.Listener {
                     startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT)
                         .setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), FIRMWARE)
                 }
+                .setPositiveButton("Audio diagnostics") { _, _ -> audioDiagnostics() }
                 .setNegativeButton("Close", null)
                 .show()
         } catch (e: Exception) { error(e) }
+    }
+
+    private fun audioDiagnostics() {
+        val snapshot = engine.audioDiagnostics().put("instrument", engine.selectedName()).toString(2)
+        val text = TextView(this).apply {
+            setPadding(dp(16f), dp(8f), dp(16f), dp(8f))
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            setTextIsSelectable(true)
+            text = snapshot
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Audio diagnostics")
+            .setView(ScrollView(this).apply { addView(text) })
+            .setPositiveButton("Copy") { _, _ ->
+                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
+                    .setPrimaryClip(ClipData.newPlainText("FM1 audio diagnostics", snapshot))
+            }
+            .setNeutralButton("Refresh") { _, _ -> audioDiagnostics() }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun confirmFirmwareReset() {

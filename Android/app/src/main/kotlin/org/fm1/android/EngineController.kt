@@ -5,6 +5,7 @@ import android.net.Uri
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.os.Debug
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -15,6 +16,8 @@ import java.io.*
 import java.nio.file.Files
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONObject
 import kotlin.math.abs
 
 /** Serial native ownership, bounded prepared PCM, and durable private storage. */
@@ -28,6 +31,9 @@ class EngineController(context: Context) {
     @JvmField @Volatile var producedFrames = 0L
     @JvmField @Volatile var outputFrames = 0L
     @JvmField @Volatile var underflowFrames = 0L
+    @JvmField @Volatile var underflowEvents = 0L
+    @JvmField @Volatile var submittedFrames = 0L
+    @JvmField @Volatile var audioWriteError = 0
     @JvmField @Volatile var peak = 0.0
 
     interface Listener {
@@ -54,12 +60,31 @@ class EngineController(context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val workerThread = HandlerThread("FM1 native owner", Process.THREAD_PRIORITY_AUDIO)
     private val worker: Handler
-    private val ringLock = Any()
+    private val persistence = OrderedPersistence(::atomicWrite) { error -> main.post { failure(error) } }
+    private val renderTimes = AudioTiming()
+    private val renderCpuTimes = AudioTiming()
+    private val producerTickTimes = AudioTiming()
+    private val producerTickCpuTimes = AudioTiming()
+    private val pcmWaitTimes = AudioTiming()
+    private val renderWakeTimes = AudioTiming()
+    private val inputQueueTimes = AudioTiming()
+    private val snapshotTimes = AudioTiming()
+    private val checkpointTimes = AudioTiming()
+    private val tickScheduled = AtomicBoolean(false)
+    private val framePosted = AtomicBoolean(false)
+    @Volatile private var renderRequestedAt = 0L
+    private val ringLock = java.lang.Object()
     private val ring = FloatArray(8192 * 2)
     private val renderBuffer = FloatArray(1024)
     private var read = 0
     private var write = 0
     private var available = 0
+    @Volatile private var audioGeneration = 0L
+    @Volatile private var audioFlushes = 0L
+    @Volatile private var submittedSinceFlush = 0L
+    @Volatile private var runtimeBackend = 0
+    @Volatile private var ringLowFrames = 1024
+    @Volatile private var ringHighFrames = 0
     @Volatile private var closed = false
     @Volatile private var foreground = true
     @Volatile private var ready = false
@@ -76,12 +101,27 @@ class EngineController(context: Context) {
     private val tick =
         object : Runnable {
             override fun run() {
+                val requestedAt = renderRequestedAt
+                tickScheduled.set(false)
                 if (closed) return
+                var madeProgress = false
+                val tickStarted = System.nanoTime()
+                val tickCpuStarted = Debug.threadCpuTimeNanos()
                 try {
                     if (running()) {
+                        if (requestedAt != 0L) renderWakeTimes.record(System.nanoTime() - requestedAt)
                         val need = synchronized(ringLock) { 1024 - available }
                         if (need >= 512) {
-                            val frames = NativeEngine.render(machine, renderBuffer, 512)
+                            val started = System.nanoTime()
+                            val cpuStarted = Debug.threadCpuTimeNanos()
+                            val frames = try {
+                                NativeEngine.render(machine, renderBuffer, 512)
+                            } finally {
+                                val cpuElapsed = Debug.threadCpuTimeNanos() - cpuStarted
+                                val elapsed = System.nanoTime() - started
+                                renderCpuTimes.record(cpuElapsed)
+                                renderTimes.record(elapsed)
+                            }
                             if (frames !in 0..512 || (selectedKind < 11 && frames != 512))
                                 throw IOException("The instrument did not return complete audio.")
                             for (i in 0 until frames * 2) {
@@ -95,16 +135,25 @@ class EngineController(context: Context) {
                                     renderBuffer[i]
                                 write = (write + frames) % 8192
                                 available += frames
+                                ringHighFrames = maxOf(ringHighFrames, available)
+                                ringLock.notifyAll()
                             }
                             producedFrames += frames
+                            madeProgress = frames > 0
                         }
                         val now = SystemClock.uptimeMillis()
-                        if (now - lastSnapshot >= 33) {
+                        // Prefer a refilled ring for optional work. Bound deferral so an
+                        // overloaded instrument still updates its UI and autosaves.
+                        val prepared = synchronized(ringLock) { available }
+                        if (now - lastSnapshot >= 33 && (prepared >= 1024 || now - lastSnapshot >= 200)) {
                             publishFrame()
+                            compiledInstructions = NativeEngine.jitInstructions(machine)
+                            runtimeBackend = NativeEngine.backend(machine)
                             lastSnapshot = now
                         }
-                        if (now - lastSave >= 10000) {
-                            checkpoint()
+                        if (now - lastSave >= 10000 && (prepared >= 1024 || now - lastSave >= 30000)
+                            && !persistence.periodicPending()) {
+                            checkpoint(periodic = true)
                             lastSave = now
                         }
                     }
@@ -112,8 +161,14 @@ class EngineController(context: Context) {
                     ready = false
                     clearRing()
                     failure(error)
+                } finally {
+                    val cpuElapsed = Debug.threadCpuTimeNanos() - tickCpuStarted
+                    val elapsed = System.nanoTime() - tickStarted
+                    producerTickCpuTimes.record(cpuElapsed)
+                    producerTickTimes.record(elapsed)
                 }
-                worker.postDelayed(this, 2)
+                if (running() && synchronized(ringLock) { available < 1024 })
+                    requestRender(if (madeProgress) 0 else 1)
             }
         }
 
@@ -153,7 +208,7 @@ class EngineController(context: Context) {
         worker.post {
             val imported = prefs.getString("firmwareId", null)
             if (imported != null) load(13, firmwareId = imported) else load(selectedKind)
-            worker.post(tick)
+            requestRender()
         }
     }
 
@@ -180,36 +235,128 @@ class EngineController(context: Context) {
             read = 0
             write = 0
             available = 0
+            audioGeneration++
+            ringLock.notifyAll()
         }
 
     private fun running() = ready && !paused && foreground && !closed
 
+    private fun requestRender(delayMillis: Long = 0) {
+        if (!closed && tickScheduled.compareAndSet(false, true)) {
+            renderRequestedAt = System.nanoTime()
+            worker.postDelayed(tick, delayMillis)
+        }
+    }
+
+    /** Host timing and accepted output only; this does not measure acoustic touch latency. */
+    fun audioDiagnostics(): JSONObject {
+        fun timing(value: AudioTiming): JSONObject {
+            val s = value.snapshot()
+            return JSONObject().put("count", s.count).put("windowCount", s.windowCount)
+                .put("windowP95Micros", s.p95Micros).put("lifetimeMaxMicros", s.maxMicros)
+                .put("totalNanos", s.totalNanos)
+        }
+        val result = JSONObject().put("capturedAtElapsedNanos", SystemClock.elapsedRealtimeNanos())
+            .put("running", running()).put("generation", audioGeneration)
+            .put("producedFrames", producedFrames).put("acceptedGeneratedFrames", outputFrames)
+            .put("acceptedTotalFrames", submittedFrames).put("underflowFrames", underflowFrames)
+            .put("underflowEvents", underflowEvents).put("writeError", audioWriteError)
+            .put("ringFrames", synchronized(ringLock) { available }).put("ringLowFrames", ringLowFrames)
+            .put("ringHighFrames", ringHighFrames).put("ringTargetFrames", 1024)
+            .put("flushes", audioFlushes).put("backend", runtimeBackend).put("jitInstructions", compiledInstructions)
+            .put("render", timing(renderTimes)).put("producerWake", timing(renderWakeTimes))
+            .put("renderCpu", timing(renderCpuTimes))
+            .put("producerTick", timing(producerTickTimes)).put("producerTickCpu", timing(producerTickCpuTimes))
+            .put("pcmWait", timing(pcmWaitTimes))
+            .put("inputQueue", timing(inputQueueTimes)).put("snapshot", timing(snapshotTimes))
+            .put("checkpointCapture", timing(checkpointTimes)).put("storageWrite", timing(persistence.writeTimes))
+        try {
+            result.put("sampleRate", track.sampleRate).put("bufferFrames", track.bufferSizeInFrames)
+                .put("bufferCapacityFrames", track.bufferCapacityInFrames).put("performanceMode", track.performanceMode)
+                .put("osUnderruns", track.underrunCount).put("acceptedFramesSinceFlush", submittedSinceFlush)
+                .put("playbackHeadFramesSinceFlush", Integer.toUnsignedLong(track.playbackHeadPosition))
+            track.routedDevice?.let { result.put("routeType", it.type).put("routeId", it.id) }
+        } catch (_: IllegalStateException) { result.put("trackReleased", true) }
+        return result
+    }
+
     private fun audioLoop() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val output = FloatArray(1024)
+        var generation = audioGeneration
+        val cursor = PcmWriteCursor()
+        var acceptedSinceFlush = 0L
+        // Keep a full mixer period in reserve even on a route without fast output.
+        val playbackDeadline = PcmPlaybackDeadline(track.sampleRate, audioBufferFrames,
+            maxOf(512, track.sampleRate / 50))
         track.play()
         while (!closed) {
+            if (generation != audioGeneration) {
+                track.pause()
+                track.flush()
+                generation = audioGeneration
+                acceptedSinceFlush = 0
+                submittedSinceFlush = 0
+                playbackDeadline.reset()
+                audioFlushes++
+                track.play()
+            }
             var count = 0
             val play = running()
+            if (play) requestRender()
+            // Choose PCM before the queued audio really needs replacing, rather than
+            // committing silence before a potentially blocking write with PCM queued.
+            val waitStarted = System.nanoTime()
+            val deadline = if (play) playbackDeadline.deadlineNanos(acceptedSinceFlush / 2,
+                Integer.toUnsignedLong(track.playbackHeadPosition), waitStarted) else waitStarted
+            var waited = false
             synchronized(ringLock) {
-                if (play) {
+                while (!closed && running() && generation == audioGeneration && available < 512) {
+                    val remaining = deadline - System.nanoTime()
+                    if (remaining <= 0) break
+                    waited = true
+                    ringLock.wait(remaining / 1_000_000, (remaining % 1_000_000).toInt())
+                }
+                // A reset/selection can arrive between the flush check and this lock.
+                // Leave its new PCM in the ring until output has acknowledged that generation.
+                if (play && running() && generation == audioGeneration) {
                     count = minOf(512, available)
                     for (i in 0 until count * 2) output[i] = ring[(read * 2 + i) % ring.size]
                     read = (read + count) % 8192
                     available -= count
+                    ringLowFrames = minOf(ringLowFrames, available)
                 }
             }
+            if (waited) pcmWaitTimes.record(System.nanoTime() - waitStarted)
+            if (generation != audioGeneration) continue
+            if (play && !running()) continue
+            if (play) requestRender()
             output.fill(0f, count * 2, output.size)
             if (muted) output.fill(0f)
             if (play) {
                 underflowFrames += 512 - count
-                outputFrames += count
+                if (count < 512) underflowEvents++
             }
-            val sent = track.write(output, 0, output.size, AudioTrack.WRITE_BLOCKING)
-            if (sent < 0) {
-                Log.e("FM1", "AudioTrack write $sent")
-                break
+            cursor.begin(output.size, count * 2)
+            while (cursor.remaining > 0 && !closed && generation == audioGeneration) {
+                val sent = track.write(output, cursor.offset, cursor.remaining, AudioTrack.WRITE_BLOCKING)
+                if (sent < 0) {
+                    audioWriteError = sent
+                    ready = false
+                    worker.post { failure(IOException("Audio output stopped ($sent).")) }
+                    break
+                }
+                if (sent == 0) {
+                    Thread.sleep(1)
+                    continue
+                }
+                cursor.accept(sent)
+                acceptedSinceFlush += sent
+                outputFrames = cursor.acceptedGeneratedSamples / 2
+                submittedFrames = cursor.acceptedSamples / 2
+                submittedSinceFlush = acceptedSinceFlush / 2
             }
+            if (audioWriteError != 0) break
         }
         track.stop()
         track.release()
@@ -271,7 +418,7 @@ class EngineController(context: Context) {
         ready = false
         clearRing()
         try {
-            if (machine != 0L && !reset) checkpoint()
+            if (machine != 0L && !reset) checkpoint(wait = true)
             val imported = if (firmwareId != null) entry ?: firmwareLibrary.entry(firmwareId) else null
             val bytes = if (firmwareId != null) importedBytes ?: firmwareLibrary.bytes(firmwareId) else packageBytes(kind)
             candidate = if (firmwareId != null) NativeEngine.createBinary(bytes, true) else NativeEngine.create(bytes, kind)
@@ -283,7 +430,7 @@ class EngineController(context: Context) {
             if (imported != null && importedBytes != null) firmwareLibrary.store(imported, bytes)
             // Commit the fresh state before replacing the running instance. Do not
             // checkpoint the old instance over it during a reset.
-            if (reset) atomicWrite(save, NativeEngine.flash(candidate))
+            if (reset) persistence.save(save, NativeEngine.flash(candidate), wait = true)
             if (machine != 0L) {
                 NativeEngine.release(machine)
                 NativeEngine.destroy(machine)
@@ -294,11 +441,15 @@ class EngineController(context: Context) {
             selectedFirmwareId = firmwareId
             if (imported != null) importedName = imported.name
             compiledInstructions = NativeEngine.jitInstructions(machine)
+            runtimeBackend = NativeEngine.backend(machine)
             prefs.edit().putInt("instrument", kind).putString("firmwareId", firmwareId).apply()
             clearRing()
             ready = true
+            lastSave = SystemClock.uptimeMillis()
+            lastSnapshot = lastSave
             peak = 0.0
             publishFrame()
+            requestRender()
             message(if (firmwareId != null) "$importedName · ARM64 compiled" else "")
         } catch (error: Exception) {
             if (candidate != 0L) NativeEngine.destroy(candidate)
@@ -309,15 +460,30 @@ class EngineController(context: Context) {
 
     private fun publishFrame() {
         if (machine == 0L) return
+        val started = System.nanoTime()
         NativeEngine.snapshot(machine, snapshotPixels, snapshotLeds)
-        if (pixels.contentEquals(snapshotPixels) && leds.contentEquals(snapshotLeds)) return
-        if (!pixels.contentEquals(snapshotPixels)) pixels = snapshotPixels.clone()
+        val pixelsChanged = !pixels.contentEquals(snapshotPixels)
+        if (!pixelsChanged && leds.contentEquals(snapshotLeds)) {
+            snapshotTimes.record(System.nanoTime() - started)
+            return
+        }
+        if (pixelsChanged) pixels = snapshotPixels.clone()
         leds = snapshotLeds.clone()
-        main.post { frameListener?.onFrame() }
+        snapshotTimes.record(System.nanoTime() - started)
+        if (framePosted.compareAndSet(false, true)) main.post {
+            framePosted.set(false)
+            frameListener?.onFrame()
+        }
     }
 
-    private fun checkpoint() {
-        if (machine != 0L) atomicWrite(saveFile(selectedKind), NativeEngine.flash(machine))
+    private fun checkpoint(wait: Boolean = false, periodic: Boolean = false) {
+        if (machine == 0L) return
+        // Capture the destination with the bytes, before another instrument can be selected.
+        val file = saveFile(selectedKind, selectedFirmwareId)
+        val started = System.nanoTime()
+        val bytes = NativeEngine.flash(machine)
+        checkpointTimes.record(System.nanoTime() - started)
+        persistence.save(file, bytes, wait, periodic)
     }
 
     fun selectEngine(kind: Int) {
@@ -336,12 +502,22 @@ class EngineController(context: Context) {
     }
 
     fun key(id: Int, down: Boolean) {
-        worker.post { if (machine != 0L && running()) NativeEngine.key(machine, id, down) }
+        val enqueued = System.nanoTime()
+        worker.post {
+            if (machine != 0L && running()) {
+                inputQueueTimes.record(System.nanoTime() - enqueued)
+                NativeEngine.key(machine, id, down)
+            }
+        }
     }
 
     fun encoder(id: Int, delta: Int) {
+        val enqueued = System.nanoTime()
         worker.post {
-            if (machine != 0L) NativeEngine.encoder(machine, id, delta.coerceIn(-32, 32))
+            if (machine != 0L) {
+                inputQueueTimes.record(System.nanoTime() - enqueued)
+                NativeEngine.encoder(machine, id, delta.coerceIn(-32, 32))
+            }
         }
     }
 
@@ -369,6 +545,7 @@ class EngineController(context: Context) {
                     failure(error)
                 }
             }
+            if (!value) requestRender()
         }
         notifyStatus()
     }
@@ -391,6 +568,7 @@ class EngineController(context: Context) {
                     failure(error)
                 }
             }
+            if (value) requestRender()
         }
     }
 
@@ -461,7 +639,7 @@ class EngineController(context: Context) {
                 File(projects, "Recovery-${System.currentTimeMillis()}.fm1backup"),
                 current.envelope("Recovery before opening", true),
             )
-            atomicWrite(saveFile(2), NativeEngine.flash(candidate))
+            persistence.save(saveFile(2), NativeEngine.flash(candidate), wait = true)
             NativeEngine.release(machine)
             NativeEngine.destroy(machine)
             machine = candidate
@@ -496,7 +674,7 @@ class EngineController(context: Context) {
                         File(projects, "Recovery-${System.currentTimeMillis()}.fm1backup"),
                         current.envelope("Before sample import", true),
                     )
-                    atomicWrite(saveFile(2), NativeEngine.flash(candidate))
+                    persistence.save(saveFile(2), NativeEngine.flash(candidate), wait = true)
                     NativeEngine.destroy(machine)
                     machine = candidate
                     candidate = 0
@@ -564,10 +742,11 @@ class EngineController(context: Context) {
 
     fun close() {
         foreground = false
+        synchronized(ringLock) { ringLock.notifyAll() }
         cancelExport()
         worker.post {
             try {
-                checkpoint()
+                checkpoint(wait = true)
             } catch (error: Exception) {
                 failure(error)
             }
@@ -576,6 +755,8 @@ class EngineController(context: Context) {
                 machine = 0
             }
             closed = true
+            synchronized(ringLock) { ringLock.notifyAll() }
+            persistence.close()
             workerThread.quitSafely()
         }
     }

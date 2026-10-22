@@ -23,12 +23,16 @@ class EngineInstrumentation : Instrumentation() {
     private var compilerOnly = false
     private var uiOnly = false
     private var exchangeTests = false
+    private var performanceOnly = false
+    private var performanceSeconds = 30
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
         compilerOnly = arguments?.getString("compilerOnly") == "true"
         uiOnly = arguments?.getString("uiOnly") == "true"
         exchangeTests = arguments?.getString("exchange") == "true"
+        performanceOnly = arguments?.getString("performanceOnly") == "true"
+        performanceSeconds = arguments?.getString("performanceSeconds")?.toIntOrNull() ?: 30
         Thread(::runChecks, "fm1-instrumentation").start()
     }
 
@@ -1043,8 +1047,77 @@ class EngineInstrumentation : Instrumentation() {
         }
     }
 
+    /** Explicitly isolated package: never run this workload against the owner's saves. */
+    private fun physicalPerformance(): JSONObject {
+        require(targetContext.packageName == "org.fm1.android.benchmark", "Performance tests require the isolated benchmark APK")
+        require(performanceSeconds in 30..600 && performanceSeconds % 5 == 0, "Performance duration must be 30–600 seconds in five-second intervals")
+        val activity = startActivitySync(Intent(targetContext, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+        val controller = field(activity, "engine") as EngineController
+        try {
+            runOnMainSync {
+                controller.selectEngine(12)
+                controller.setPaused(false)
+                controller.setMuted(false)
+                controller.setMaster(716)
+            }
+            barrier(controller)
+            require(controller.selectedKind == 12, "FM-1+VA did not load")
+            delay(3000)
+            val before = controller.audioDiagnostics()
+            require(before.getBoolean("running"), "Benchmark is not foreground and running; unlock the phone and leave its benchmark Activity visible")
+            val start = SystemClock.elapsedRealtime()
+            val slices = JSONArray()
+            repeat(performanceSeconds / 5) {
+                for (key in intArrayOf(21, 25, 28, 32)) controller.key(key, true)
+                delay(4000)
+                for (key in intArrayOf(21, 25, 28, 32)) controller.key(key, false)
+                delay(1000)
+                slices.put(controller.audioDiagnostics())
+            }
+            // Include the bounded wait in elapsed time; starvation must fail the progress gate.
+            val finalBarrier = CountDownLatch(1)
+            (field(controller, "worker") as Handler).post { finalBarrier.countDown() }
+            val workerSettled = finalBarrier.await(20, TimeUnit.SECONDS)
+            val after = controller.audioDiagnostics()
+            val elapsed = SystemClock.elapsedRealtime() - start
+            val result = JSONObject().put("elapsedMs", elapsed).put("before", before).put("after", after).put("intervals", slices)
+                .put("requestedDurationSeconds", performanceSeconds)
+                .put("finalWorkerBarrierSettled", workerSettled).put("requestedAppMaster", 716)
+                .put("appMaster", controller.getMaster()).put("muted", controller.muted)
+            // Keep the receipt even on failure, so deficits cannot disappear behind an assertion.
+            File(targetContext.filesDir, "performance.json").writeText(result.toString(2))
+            val underflow = after.getLong("underflowFrames") - before.getLong("underflowFrames")
+            val underruns = after.getInt("osUnderruns") - before.getInt("osUnderruns")
+            require(workerSettled, "Final key releases did not settle within 20 seconds")
+            require(!controller.muted && controller.getMaster() == 716, "App master/mute changed during measurement")
+            require(elapsed >= performanceSeconds * 1000L, "Measurement was shorter than $performanceSeconds seconds")
+            require(after.getBoolean("running") && slices.let { a -> (0 until a.length()).all { a.getJSONObject(it).getBoolean("running") } },
+                "Benchmark stopped or left foreground during measurement")
+            require(after.getLong("generation") == before.getLong("generation"), "Audio stream reset during measurement")
+            require(after.getInt("sampleRate") == before.getInt("sampleRate"), "Audio sample rate changed during measurement")
+            val expected = elapsed * after.getInt("sampleRate") / 1000
+            val produced = after.getLong("producedFrames") - before.getLong("producedFrames")
+            val accepted = after.getLong("acceptedGeneratedFrames") - before.getLong("acceptedGeneratedFrames")
+            val played = (after.getLong("playbackHeadFramesSinceFlush") - before.getLong("playbackHeadFramesSinceFlush")) and 0xffffffffL
+            require(produced >= expected - 4096 && accepted >= expected - 4096 && played in (expected - 4096)..(expected + 4096),
+                "Audio failed to progress at real time: expected=$expected produced=$produced accepted=$accepted played=$played")
+            val appliedEdges = after.getJSONObject("inputQueue").getLong("count") - before.getJSONObject("inputQueue").getLong("count")
+            val expectedEdges = performanceSeconds / 5 * 8
+            require(appliedEdges >= expectedEdges, "Four-note workload was not fully applied: expected $expectedEdges key edges, applied=$appliedEdges")
+            require(underflow == 0L && underruns == 0, "Steady playback failed: host missing=$underflow frames, AudioTrack underruns=$underruns; see performance.json")
+            require(controller.status.isEmpty(), "runtime error: ${controller.status}")
+            return result
+        } finally {
+            runOnMainSync { activity.finish() }
+            waitForIdleSync()
+            (field(controller, "workerThread") as Thread).join(20000)
+        }
+    }
+
     private fun runChecks() {
-        if (compilerOnly) check("compiler-binary-parity-and-import", ::compiledFirmware)
+        if (performanceOnly) check("physical-fm1va-continuity", ::physicalPerformance)
+        else if (compilerOnly) check("compiler-binary-parity-and-import", ::compiledFirmware)
         else {
         if (!uiOnly) {
             for (kind in 2..10) check("engine-$kind") { engine(kind) }
@@ -1062,7 +1135,9 @@ class EngineInstrumentation : Instrumentation() {
         try {
             val receipt =
                 JSONObject()
-                    .put("platform", "Android emulator")
+                    .put("platform", "Android")
+                    .put("model", android.os.Build.MODEL)
+                    .put("fingerprint", android.os.Build.FINGERPRINT)
                     .put("sdk", android.os.Build.VERSION.SDK_INT)
                     .put("abi", android.os.Build.SUPPORTED_ABIS[0])
                     .put("failures", failures)
