@@ -1,4 +1,136 @@
 //! Exact package/source pins select separate compiled firmware implementations.
+#[cfg(fm1_native_additions)]
+mod choralroot {
+    use super::Api;
+    extern "C" {
+        fn chr_state_size() -> u64;
+        fn chr_state_init(state: *mut u8) -> i32;
+        fn chr_bind(state: *mut u8);
+        fn chr_init();
+        fn chr_ctl() -> u32;
+        fn chr_rate() -> u32;
+        fn chr_render(out: *mut i32, frames: u32);
+        fn chr_draw(out: *mut u16);
+        fn chr_physical_key(id: u32, down: i32);
+        fn chr_release_all();
+        fn chr_physical_encoder(id: u32, delta: i32);
+        fn chr_physical_leds(out: *mut f32);
+        fn chr_volume(value: u32);
+        fn chr_flash_load(bytes: *const u8);
+        fn chr_flash_copy(bytes: *mut u8);
+        fn chr_workload_metrics(out: *mut u64, capacity: u32) -> u32;
+    }
+    pub const API: Api = Api {
+        kind: 14,
+        flash_size: 1048576,
+        alignment: 16,
+        state_size: chr_state_size,
+        state_init: chr_state_init,
+        bind: chr_bind,
+        init: chr_init,
+        ctl: chr_ctl,
+        rate: chr_rate,
+        render: chr_render,
+        draw: chr_draw,
+        key: chr_physical_key,
+        release_all: chr_release_all,
+        encoder: chr_physical_encoder,
+        leds: chr_physical_leds,
+        volume: chr_volume,
+        flash_load: chr_flash_load,
+        flash_copy: chr_flash_copy,
+        metrics: chr_workload_metrics,
+        destroy: None,
+    };
+}
+#[cfg(fm1_native_additions)]
+mod ghoulbox {
+    use super::Api;
+    extern "C" {
+        fn ghb_state_size() -> u64;
+        fn ghb_state_init(state: *mut u8) -> i32;
+        fn ghb_bind(state: *mut u8);
+        fn ghb_init();
+        fn ghb_ctl() -> u32;
+        fn ghb_rate() -> u32;
+        fn ghb_render(out: *mut i32, frames: u32);
+        fn ghb_draw(out: *mut u16);
+        fn ghb_physical_key(id: u32, down: i32);
+        fn ghb_release_all();
+        fn ghb_physical_encoder(id: u32, delta: i32);
+        fn ghb_physical_leds(out: *mut f32);
+        fn ghb_volume(value: u32);
+        fn ghb_flash_load(bytes: *const u8);
+        fn ghb_flash_copy(bytes: *mut u8);
+        fn ghb_workload_metrics(out: *mut u64, capacity: u32) -> u32;
+    }
+    pub const API: Api = Api {
+        kind: 15,
+        flash_size: 1048576,
+        alignment: 16,
+        state_size: ghb_state_size,
+        state_init: ghb_state_init,
+        bind: ghb_bind,
+        init: ghb_init,
+        ctl: ghb_ctl,
+        rate: ghb_rate,
+        render: ghb_render,
+        draw: ghb_draw,
+        key: ghb_physical_key,
+        release_all: ghb_release_all,
+        encoder: ghb_physical_encoder,
+        leds: ghb_physical_leds,
+        volume: ghb_volume,
+        flash_load: ghb_flash_load,
+        flash_copy: ghb_flash_copy,
+        metrics: ghb_workload_metrics,
+        destroy: None,
+    };
+}
+#[cfg(fm1_native_additions)]
+mod jiant {
+    use super::Api;
+    extern "C" {
+        fn jnt_state_size() -> u64;
+        fn jnt_state_init(state: *mut u8) -> i32;
+        fn jnt_bind(state: *mut u8);
+        fn jnt_init();
+        fn jnt_ctl() -> u32;
+        fn jnt_rate() -> u32;
+        fn jnt_render(out: *mut i32, frames: u32);
+        fn jnt_draw(out: *mut u16);
+        fn jnt_physical_key(id: u32, down: i32);
+        fn jnt_release_all();
+        fn jnt_physical_encoder(id: u32, delta: i32);
+        fn jnt_physical_leds(out: *mut f32);
+        fn jnt_volume(value: u32);
+        fn jnt_flash_load(bytes: *const u8);
+        fn jnt_flash_copy(bytes: *mut u8);
+        fn jnt_workload_metrics(out: *mut u64, capacity: u32) -> u32;
+    }
+    pub const API: Api = Api {
+        kind: 16,
+        flash_size: 1048576,
+        alignment: 16,
+        state_size: jnt_state_size,
+        state_init: jnt_state_init,
+        bind: jnt_bind,
+        init: jnt_init,
+        ctl: jnt_ctl,
+        rate: jnt_rate,
+        render: jnt_render,
+        draw: jnt_draw,
+        key: jnt_physical_key,
+        release_all: jnt_release_all,
+        encoder: jnt_physical_encoder,
+        leds: jnt_physical_leds,
+        volume: jnt_volume,
+        flash_load: jnt_flash_load,
+        flash_copy: jnt_flash_copy,
+        metrics: jnt_workload_metrics,
+        destroy: None,
+    };
+}
 use super::native_sloop::Api;
 #[cfg(fm1_native_clipper)]
 mod clipper {
@@ -443,6 +575,18 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
     {
         return Some(skiff::API);
     }
+    #[cfg(fm1_native_additions)]
+    if (len == 0 || len == 610313) && digest == [241, 24, 196, 231, 239, 197, 0, 215, 220, 246, 157, 241, 104, 89, 96, 180, 23, 135, 8, 101, 201, 163, 39, 174, 217, 236, 84, 67, 238, 174, 141, 177] {
+        return Some(choralroot::API);
+    }
+    #[cfg(fm1_native_additions)]
+    if (len == 0 || len == 610086) && digest == [6, 159, 109, 120, 61, 177, 224, 87, 118, 168, 144, 6, 236, 186, 7, 160, 171, 252, 210, 204, 122, 15, 230, 250, 100, 219, 9, 107, 94, 202, 212, 200] {
+        return Some(ghoulbox::API);
+    }
+    #[cfg(fm1_native_additions)]
+    if (len == 0 || len == 610089) && digest == [46, 53, 121, 29, 8, 57, 56, 138, 31, 106, 222, 100, 191, 171, 32, 255, 131, 161, 13, 27, 26, 242, 46, 26, 55, 140, 27, 186, 146, 132, 128, 35] {
+        return Some(jiant::API);
+    }
     None
 }
 
@@ -463,6 +607,12 @@ mod tests {
             9 => jangada::API,
             #[cfg(fm1_native_clipper)]
             10 => clipper::API,
+            #[cfg(fm1_native_additions)]
+            14 => choralroot::API,
+            #[cfg(fm1_native_additions)]
+            15 => ghoulbox::API,
+            #[cfg(fm1_native_additions)]
+            16 => jiant::API,
             _ => panic!("kind"),
         }
     }
@@ -474,6 +624,8 @@ mod tests {
         kinds.extend([8, 9]);
         #[cfg(fm1_native_clipper)]
         kinds.push(10);
+        #[cfg(fm1_native_additions)]
+        kinds.extend([14, 15, 16]);
         kinds
     }
     fn run(m: &mut Native, frames: usize) -> Vec<f32> {
@@ -499,8 +651,8 @@ mod tests {
             blank[123] = kind as u8;
             let mut m = Native::with_api(&blank, api(kind)).unwrap();
             assert_eq!(m.kind(), kind);
-            // Skiff's real boot splash suppresses keys for 400 ms; wait before input.
-            run(&mut m, 22050);
+            // Let the source hosts finish their boot splashes before note input.
+            run(&mut m, 88200);
             // Every note is exercised, including the drum-first X0X power-on page.
             for k in 14..41 {
                 m.key(k, true);
@@ -545,9 +697,9 @@ mod tests {
             let mut a = Native::with_api(&blank, api(kind)).unwrap();
             let mut b = Native::with_api(&blank, api(kind)).unwrap();
             let mut reference = Native::with_api(&blank, api(kind)).unwrap();
-            run(&mut a, 22050);
-            run(&mut b, 22050);
-            run(&mut reference, 22050);
+            run(&mut a, 88200);
+            run(&mut b, 88200);
+            run(&mut reference, 88200);
             // X0X's black keys trigger drums; its white keys edit steps.
             let first_key = if kind == 4 { 15 } else { 21 };
             let second_key = if kind == 4 { 17 } else { 26 };
@@ -632,6 +784,15 @@ mod tests {
         {
             let extra = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_SKIFF").unwrap());
             cases.push((7, extra.parent().unwrap().join("skiff-1.4.fwsc")));
+        }
+        #[cfg(fm1_native_additions)]
+        {
+            let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+            cases.extend([
+                (14, root.join("Research/ChoralRoot/choralroot-0.26.1.fwsc")),
+                (15, root.join("Research/Ghoulbox/ghoulbox-2.3.2.fwsc")),
+                (16, root.join("Research/Jiant/jiant-0.9.9.fwsc")),
+            ]);
         }
         for (kind, path) in cases {
             let mut package = std::fs::read(path).unwrap();

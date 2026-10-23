@@ -1,60 +1,28 @@
 # fm1-emu core provenance
 
 Source: https://github.com/joakimeriksson/fm1-emu
-Revision: 7ca5b96c9e828dea5176fc60f0b945abbf442895 (2026-10-16 retrieval).
+Revision: c1c045fc067da024d686e7a690806e2e55795042 (2026-10-23 retrieval).
 License: MIT, Joakim Eriksson. See LICENSE-fm1-emu; also included in the app.
-Only fm1-isa, fm1-core and fm1-soc are vendored. They have no third-party package dependencies.
-This Vendor/ directory contains only the MIT interpreter crates, not JUCE or firmware binaries/factory sound banks. Separate GPL-3.0 native-wrapper source is present under Core/native; see the root NOTICE and licenses/NOTICE-native-sloop.
-Core/src/lib.rs adapts the upstream machine boot and execution pattern to an instance-based C ABI.
-The native panel is newly drawn from the manufacturer product photo, with matrix mappings verified against upstream panel.rs.
+Only fm1-isa, fm1-core and fm1-soc are vendored; no JUCE or firmware banks.
+Cargo metadata uses local workspace versions and the upstream MIT license.
 
-Local interpreter changes (2026-10-17): borrow cached micro-ops during execution,
-use the existing RAM code-write counter for native cache validation, inline checked
-RAM accessors, and specialize common integer operations. Code-cache storage is
-bounded by both operation and block counts. iOS still explicitly disables JIT.
-Regression tests compare flags and registers across integer specializations,
-instruction counts and due-tick/budget boundaries, and code invalidation for tracked
-and untracked buses. Upstream MIT attribution and the pinned source revision above
-remain unchanged.
+The upstream CPU/JIT, ISA and SoC replace the previous 7ca5b96-based local
+interpreter/JIT and experimental dual-core scheduler. This includes upstream
+register caching, compiled flag handling, computed jumps, polling-loop skipping,
+CPU1 release latching, and in-block self-modifying RAM-code checks.
 
-Pure register-add/branch pairs may share one dispatch only when both instruction
-ticks fit before the bus's next event; otherwise execution uses the ordinary
-per-instruction path. No audio samples, guest instructions or clock cycles are
-dropped. Earlier experimental traces, hand-selected superinstructions and polling-loop
-reductions were not retained because they did not improve total workload time
-consistently against this smaller implementation.
+Local embedding changes retained/adapted:
+- Android JIT code reserves inaccessible pages, writes fresh whole pages RW,
+  flushes instructions and publishes RX; never RWX. Failed publication does not
+  revoke existing blocks. Code pages and boxed helper/chain data belong to the CPU.
+- Rust helper panics are contained until generated frames return.
+- Actual JIT instruction counts remain available without helper profiling;
+  compilation timing and architectural snapshots support local diagnostics/tests.
+- Firmware parsing rejects truncated/out-of-range app headers and marker overflow.
+- Flash changes to fetched XIP words invalidate decode/block/JIT caches for each
+  core; saved flash restore requires the complete 1 MiB image at the C ABI.
 
-The Apple interpreter also supports statically compiled C hot-block kernels.
-Local measured decoded XIP blocks select build-time kernels; binding requires
-exact PC, length, every compact descriptor field and instruction metadata. Kernels
-run only while the full block fits before the next observable event, and stop
-before unsupported, MMIO or tracked code-memory operations. The reference Rust
-path handles those boundaries. Rust callback panics are contained until the C
-frame returns, and cross-language state layouts are checked by field offset.
-No runtime machine-code generation or executable-memory mutation is used.
-
-The generator and C templates are original local adaptations of the attributed
-Rust semantics. Firmware-derived captures, count profiles, generated kernels and
-manifests remain in ignored Research/Generated; they are not vendored or published.
-Builds explicitly opt in with FM1_STATIC_KERNELS and reject stale/corrupt manifests.
-RAM blocks use the original Rust interpreter because mixed C/Rust dispatch there
-was slower on Stock. Without generated kernels the original Rust interpreter remains
-the default.
-The native Python builders verify source and resource inputs and write local build receipts.
-
-Android binary recompilation (2026-10-22): the existing AArch64 block compiler is
-also built for Android. Code pages use the runtime page size, start inaccessible,
-become RW only for construction, then RX before publication. The code cache and
-boxed chain slots/helpers are freed with their owning CPU. Cache flushes clean
-data and invalidate instructions according to CTR_EL0. Rust helper panics are
-contained until generated frames return. Instruction budgets now bound both the
-reference and compiled paths exactly, including the optional static C path, so
-CPU scheduling and input timing agree. Code generation remains based on the
-vendored MIT implementation; no guest executable bytes are called directly.
-
-The Android port in Harbor was inspected as prior art:
-https://github.com/markterm/harbor/blob/main/patches/0001-fm1-core-enable-the-aarch64-jit-on-android.patch
-This local implementation retains the pinned ISA/SoC revision and uses page-based
-W^X publication rather than that patch's RWX mapping. Import support does not
-claim compatibility with every current or future firmware. Local parser changes
-reject truncated/out-of-range app headers and avoid marker-count overflow.
+The old optional Apple static-kernel experiments are not enabled by this upstream
+runtime. Their historical helper sources remain for offline research only.
+Core/src/lib.rs adapts upstream machine boot/execution to the instance C ABI.
+Source-native engines remain separate, pinned GPL-compatible implementations.

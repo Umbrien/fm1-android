@@ -1,116 +1,148 @@
-//! P33 serial register bridge at CON=0x13e08, DAT=0x13e0c.
+//! P33, the power domain's analog control registers (supplies, watchdog, reset source), reached
+//! through a byte-serial port: P33_CON at 0x13E08, P33_DAT at 0x13E0C (SDK p33.h).
 //!
-//! The SDK/HAL P33 access sequence selects CON bit0 (bit8 chooses RTC),
-//! clocks command, address and data by strobing bit4, and polls busy bit1.
-//! Commands encode read in bit7, write/or/and/xor in bits5..6, and the
-//! address's upper two bits in bits0..1. Transfers complete synchronously.
-//! This models the register transport/readback, not analog supply physics or
-//! watchdog/reset timing. Both CPUs share the same serial transaction.
-//! Evidence: firmware/hal/fm1_sys.h and fm1_power.h in the imported Melodee HAL.
+//! A transfer writes a byte to DAT, sets CON bit 4 to start it, waits while CON bit 1 (busy)
+//! is set and reads the byte that came back from DAT. Each access is three transfers with CON
+//! bit 0 (chip select) held: a command (bit 7 read; bits 5..6 the write's operation: 0 write,
+//! 1 or, 2 and, 3 xor; bits 0..1 the address's top bits), the address's low byte, and the data
+//! (a read's dummy byte, its value coming back). CON bit 8 selects the RTC domain's registers.
+//!
+//! Modelled as plain registers, all 0 at power-on, so a firmware reads back what it set. Before
+//! this every read returned 0, and Melodee, which checks its supply setup that way, stopped at
+//! boot. Nothing here acts on the values (no watchdog, no reset through PR_PWR).
 
-pub(crate) struct P33 {
+#[derive(Clone)]
+pub struct P33 {
     con: u32,
-    data: u8,
-    registers: [[u8; 1024]; 2],
-    phase: u8,
-    command: u8,
-    address: usize,
+    dat: u32,
+    /// transfers since chip select, and what the first two said
+    step: u8,
+    cmd: u8,
+    addr: u16,
+    /// main domain at 0..0x400, RTC domain (CON bit 8) at 0x400..0x800
+    regs: Box<[u8; 0x800]>,
+    /// register writes that changed a value (`snap`)
+    changed: u64,
 }
+
+/// The port in brief (`P33::snap`): equal snaps of one port taken at two times are the same
+/// port (its registers change only together with `changed`, which only counts up).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Snap(u32, u32, u8, u8, u16, u64);
 
 impl Default for P33 {
     fn default() -> Self {
-        Self { con: 0, data: 0, registers: [[0; 1024]; 2], phase: 0, command: 0, address: 0 }
+        Self { con: 0, dat: 0, step: 0, cmd: 0, addr: 0, regs: Box::new([0; 0x800]), changed: 0 }
     }
 }
 
 impl P33 {
+    pub const CON: u32 = 0x13e08;
+    pub const DAT: u32 = 0x13e0c;
+
+    /// A register's value as the firmware last left it (`rtc`: the RTC domain's bank).
+    pub fn reg(&self, addr: u16, rtc: bool) -> u8 {
+        self.regs[Self::index(addr, rtc)]
+    }
+
+    fn index(addr: u16, rtc: bool) -> usize {
+        (addr as usize & 0x3ff) | if rtc { 0x400 } else { 0 }
+    }
+
+    pub fn snap(&self) -> Snap {
+        Snap(self.con, self.dat, self.step, self.cmd, self.addr, self.changed)
+    }
+
     pub fn read(&self, addr: u32) -> u32 {
-        match addr { 0x13e08 => self.con, 0x13e0c => self.data as u32, _ => 0 }
+        match addr & !3 {
+            // transfers finish at once: never busy, never still starting
+            Self::CON => self.con & !0x12,
+            _ => self.dat,
+        }
     }
 
     pub fn write(&mut self, addr: u32, value: u32) {
-        match addr {
-            0x13e0c => self.data = value as u8,
-            0x13e08 => {
-                // A deselection or domain change cancels an incomplete command.
-                if value & 1 == 0 || (self.con ^ value) & 0x101 != 0 { self.phase = 0; }
-                self.con = value & !0x12; // transfer strobe self-clears; no busy latency
-                if value & 0x11 == 0x11 { self.transfer(); }
-            }
-            _ => {}
+        if addr & !3 == Self::DAT {
+            self.dat = value;
+            return;
+        }
+        if value & 1 == 0 {
+            self.step = 0; // deselected: the next transfer is a new command
+        }
+        self.con = value;
+        if value & 0x10 != 0 && value & 1 != 0 {
+            self.dat = self.transfer(self.dat as u8) as u32;
         }
     }
 
-    fn transfer(&mut self) {
-        match self.phase {
-            0 => { self.command = self.data; self.address = (self.command as usize & 3) << 8; self.data = 0; }
-            1 => { self.address |= self.data as usize; self.data = 0; }
-            2 => {
-                let register = &mut self.registers[usize::from(self.con & 0x100 != 0)][self.address];
-                if self.command & 0x80 == 0 {
-                    *register = match (self.command >> 5) & 3 {
-                        0 => self.data, 1 => *register | self.data,
-                        2 => *register & self.data, _ => *register ^ self.data,
-                    };
-                }
-                self.data = *register;
+    fn transfer(&mut self, b: u8) -> u8 {
+        let step = self.step;
+        self.step = self.step.saturating_add(1);
+        match step {
+            0 => {
+                self.cmd = b;
+                self.addr = ((b & 3) as u16) << 8;
+                0
             }
-            _ => {} // A new command requires a new chip-select window.
+            1 => {
+                self.addr |= b as u16;
+                0
+            }
+            2 => {
+                let i = Self::index(self.addr, self.con & 0x100 != 0);
+                if self.cmd & 0x80 != 0 {
+                    return self.regs[i];
+                }
+                let r = &mut self.regs[i];
+                let v = match (self.cmd >> 5) & 3 {
+                    0 => b,
+                    1 => *r | b,
+                    2 => *r & b,
+                    _ => *r ^ b,
+                };
+                if v != *r {
+                    *r = v;
+                    self.changed += 1;
+                }
+                0
+            }
+            _ => 0,
         }
-        self.phase = self.phase.saturating_add(1);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn transfer(p: &mut P33, data: u8) -> u8 {
-        p.write(0x13e0c, data as u32);
-        p.write(0x13e08, p.read(0x13e08) | 0x10);
-        assert_eq!(p.read(0x13e08) & 0x12, 0);
-        p.read(0x13e0c) as u8
+
+    /// One access as the SDK's p33 driver makes it.
+    fn access(p: &mut P33, cmd: u8, addr: u8, data: u8, rtc: bool) -> u8 {
+        let cs = 1 | if rtc { 0x100 } else { 0 };
+        p.write(P33::CON, cs);
+        let mut last = 0;
+        for b in [cmd, addr, data] {
+            p.write(P33::DAT, b as u32);
+            p.write(P33::CON, p.read(P33::CON) | 0x10);
+            assert_eq!(p.read(P33::CON) & 2, 0, "never busy");
+            last = p.read(P33::DAT) as u8;
+        }
+        p.write(P33::CON, p.read(P33::CON) & !0x101);
+        last
     }
-    fn command(p: &mut P33, bank: u32, op: u8, address: u16, value: u8) -> u8 {
-        p.write(0x13e08, 1 | bank << 8);
-        transfer(p, op | (address >> 8) as u8);
-        transfer(p, address as u8);
-        let result = transfer(p, value);
-        p.write(0x13e08, 0);
-        result
-    }
+
     #[test]
-    fn readback_and_all_operations_cover_both_domains_and_address_bits() {
+    fn reads_back_what_was_written_and_combined() {
         let mut p = P33::default();
-        for bank in 0..2 { for address in [0, 5, 9, 0x80, 0xa0, 0x100, 0x2ff, 0x3ff] {
-            assert_eq!(command(&mut p, bank, 0x80, address, 0x5e), 0);
-            command(&mut p, bank, 0, address, 0x34);
-            command(&mut p, bank, 0x20, address, 0x81);
-            command(&mut p, bank, 0x40, address, 0xf7);
-            command(&mut p, bank, 0x60, address, 0x15);
-            assert_eq!(command(&mut p, bank, 0x80, address, 0x5e), 0xa0);
-        }}
-        command(&mut p, 0, 0, 9, 0x11);
-        assert_eq!(command(&mut p, 1, 0x80, 9, 0), 0xa0);
-        assert_eq!(command(&mut p, 0, 0x80, 9, 0), 0x11);
-    }
-    #[test]
-    fn ordering_deselection_shared_transaction_and_reset_are_exact() {
-        let mut p = P33::default();
-        transfer(&mut p, 0xff); // Unselected clock cannot begin a command.
-        p.write(0x13e08, 1);
-        transfer(&mut p, 0); transfer(&mut p, 7);
-        p.write(0x13e08, 0); // An aborted write never changes the register.
-        assert_eq!(command(&mut p, 0, 0x80, 7, 0), 0);
-        p.write(0x13e08, 1); transfer(&mut p, 0); transfer(&mut p, 7);
-        // A second CPU's DAT write is the data of this shared transaction.
-        transfer(&mut p, 0x69); p.write(0x13e08, 0);
-        assert_eq!(command(&mut p, 0, 0x80, 7, 0), 0x69);
-        p.write(0x13e08, 1); transfer(&mut p, 0);
-        p.write(0x13e08, 0x101); // Switching domains starts a fresh command.
-        transfer(&mut p, 0); transfer(&mut p, 8); transfer(&mut p, 0x77); p.write(0x13e08, 0);
-        assert_eq!(command(&mut p, 1, 0x80, 8, 0), 0x77);
-        let mut fresh = P33::default();
-        assert_eq!((fresh.read(0x13e08), fresh.read(0x13e0c)), (0, 0));
-        assert_eq!(command(&mut fresh, 0, 0x80, 7, 0), 0);
+        assert_eq!(access(&mut p, 0x80, 0x05, 0x5e, false), 0, "0 at power-on");
+        access(&mut p, 0x00, 0x05, 0x40, false); // write
+        access(&mut p, 0x20, 0x05, 0x04, false); // or
+        assert_eq!(access(&mut p, 0x80, 0x05, 0x5e, false), 0x44);
+        access(&mut p, 0x40, 0x05, 0xfb, false); // and
+        access(&mut p, 0x60, 0x05, 0x30, false); // xor
+        assert_eq!(access(&mut p, 0x80, 0x05, 0x5e, false), 0x70);
+        // the address's top bits come from the command; the RTC domain is its own bank
+        access(&mut p, 0x01, 0x05, 0x11, false);
+        access(&mut p, 0x00, 0x05, 0x22, true);
+        assert_eq!((p.reg(0x105, false), p.reg(0x05, false), p.reg(0x05, true)), (0x11, 0x70, 0x22));
     }
 }

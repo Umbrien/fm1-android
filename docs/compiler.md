@@ -9,101 +9,36 @@ the previous instance available and reports an error. Audio is suspended during
 candidate startup; compilation and synthesis belong to the serial engine worker,
 not the AudioTrack output thread.
 
-Nine bundled instruments retain their source-native adapters. Stock V15,
-FM-1+VA 102 and imported binaries use the existing PI32v2 machine runtime with
-its ARM64 compiler enabled on Android. Imports always execute their supplied
-binary, including when its hash matches a bundled source-native instrument.
-This avoids silently substituting a different implementation for the user's file.
+Twelve bundled instruments use their pinned source-native adapters. Stock V15,
+FM-1+VA 102 and imported binaries use the PI32v2 machine runtime with its ARM64
+compiler enabled on Android. Imports execute their supplied binary even when a
+source-native counterpart exists.
 
 ## Execution and storage
 
-The compiler translates hot decoded instruction blocks (after 32 visits) into
-ARM64 instructions in the app process. It retains the FM-1 memory map, peripheral
-models, interrupts and dual-core scheduling. Cold, unsupported compiler operations
-and timing-sensitive paths use the reference interpreter. This is JIT binary
-recompilation, not a C/C++ source compiler or a completely emulation-free port.
-No network, external toolchain or Android package installation is involved.
+The runtime now follows fm1-emu revision
+`c1c045fc067da024d686e7a690806e2e55795042` (2026-10-23). It replaces the previous
+local CPU/JIT and scheduling experiments with upstream register caching, compiled
+flag handling, computed jump chaining, polling-loop skipping and self-modifying
+RAM-code checks. Cold or unsupported operations use the interpreter. Firmware
+instructions, peripherals, interrupts and dual-core scheduling remain emulated.
 
-Each CPU reserves a bounded 64 MiB code cache. Android's actual page size controls
-allocation. New pages are writable during construction and read/execute after
-instruction-cache synchronization; they are never writable and executable at the
-same time. Existing executable pages are not made writable while installing a
-new block. Android stages small blocks into page batches before publishing any
-entry point; batches flush at one page, eight queued blocks or eight subsequent
-compiler visits. Failed publication leaves previously published pages intact.
-Code, chain slots and helper descriptors are owned and released by the
-CPU. RAM code guards invalidate changed instruction bytes. Rust helper panics
-return through generated frames before unwinding to the existing error boundary.
+Each CPU reserves a bounded 64 MiB code cache. Android uses the actual page size:
+each publication receives fresh whole pages, RW during construction and RX after
+instruction-cache synchronization. No page is simultaneously writable/executable.
+Failed publication leaves earlier blocks executable. Code, chain slots and helper
+descriptors are released with their CPU. Helper panics return through generated
+frames before unwinding to the existing error boundary. JIT instruction counts
+remain available with profiling disabled.
 
-The reference, ARM64 and optional static C execution paths use exact instruction
-budgets. Special-register moves use a shared canonical ISA decoder before the
-solver-derived field table, correcting register-bit permutations such as SP = R5
-being decoded as SP = R3. Scalar extraction from a 64-bit register pair and
-signed saturating add/subtract likewise use canonical fields rather than
-register-specific solver samples. Unproven control bits fail explicitly. Public
-decoding, cached instructions and native execution use the same fields. Exact
-budgets fix a prior block-boundary overshoot that could make input timing
-and the two-core schedule differ between reference and compiled execution.
+Flash restore requires a complete 1 MiB image. Fetched XIP words are tracked;
+changes invalidate each core's decode/block/JIT caches on its next execution
+entry. Data-only flash writes do not discard compiled code. Boot initializes the
+upstream SFC decryption model before saved flash is restored.
 
-The ARM64 backend has separate full-block and bounded-prefix paths, a tagged
-indirect-branch cache, block-local register allocation and constant-address
-lowering. Integer arithmetic preserves guest flags; floating multiply/accumulate
-keeps the reference's separate rounding and nonfinite-value behavior. Floating-point
-register allocation retains raw guest bits, including NaN payloads, and publishes
-them before helpers and exits. Direct lowering covers common paired memory and
-64-bit operations, with helpers for
-unsupported cases. Carry arithmetic, condition-code branches, indirect calls,
-test-and-set and ordinary/special-register stack lists have typed lowering.
-Special-register transfers retain ordered fallback for SP-sensitive lists and
-interrupt-readiness checks at the original instruction boundary. CPU1 batches compilation work while observing the same idle
-probe PC and interrupt boundaries as the reference scheduler.
-
-Interrupt-window checks consider enabled pending interrupts for the current CPU
-and its stable priority/masking gates. They preserve an already due event and do
-not use transient instruction-pair holds to suppress an interrupt window. CPU0
-marks ISR entry immediately after interrupt admission. CPU1 reads TIMER4 against
-its frozen clock without invoking CPU0's idle-time heuristic.
-
-After the initial CPU1 probe, a large slice may attempt one bounded proof of a
-repeating loop. At most 256 reference instructions and 128 written RAM words are
-examined against the frozen CPU1 clock. CPU architecture, written memory and
-peripheral state must return exactly to their starting values. Unsupported
-effects, interrupts and the original idle signature reject the proof. Every trial
-restores memory, CPU and decode-cache state. Proven repetitions count toward
-guest retirement, separately from actual generated-code execution. This is a
-generic runtime check; it does not recognize firmware names or hard-coded PCs.
-
-Executable RAM and flash ranges are tracked across both CPUs. Writes to decoded
-code invalidate execution; flash data writes and identical watched RAM stores do
-not discard compiled code. Decoder lookahead and wrapped flash page programs are
-included in the invalidation boundary. Compiled memory accesses retain range,
-width, alignment and peripheral-side-effect checks. Restoring saved flash checks
-the complete image length before mutation and invalidates only changed mapped
-code. Unchanged encrypted package bytes do not overwrite the decoded XIP view.
-
-Bulk stack transfers check their complete RAM span before using direct loads and
-stores; watched code and other address ranges retain ordinary bus operations.
-Synchronous FM-1 GPIO updates preserve the existing event deadline, avoiding a
-hardware-service exit for every front-panel bit. Timer, DMA and interrupt
-programming retain scheduling barriers. Low MMIO addresses use page-based region
-classification, checked against the original routing order, while high memory
-windows retain their existing priority.
-
-CPU1 startup accepts both the clock-register release and the C1_CON reset/release
-sequence with the entry mailbox at `0x01c7fff8`. Later pause/resume operations do
-not recreate its state. The shared P33 serial bridge supports command/address/data
-transactions, readback and write/or/and/xor in both register domains. These
-behaviors follow the imported Melodee HAL (`fm1_sys.h`, `fm1_core1_stop.h`,
-`fm1_multicore.h`). P33 transfers complete synchronously; analog supply physics
-and watchdog/reset timing remain outside the model.
-
-ALNK models each enabled receive/transmit channel on the shared buffer clock.
-Receive channels supply zero input and raise their channel interrupt even when
-the board has no analog input; FM1 Open uses that interrupt to run its DSP.
-Transmit channel 3 supplies the FM-1 output. One event advances the shared half
-buffer phase once, and ordinary bus writes preserve executable-RAM invalidation.
-This follows the imported FM1 Open audio HAL; it does not simulate external I2S
-devices.
+The old optional Apple static C kernels, local floating-point lowering and custom
+CPU1 fixed-point proof are superseded by this upstream runtime. Historical helper
+sources remain for offline research; they are not part of the Android build.
 
 Android's output thread consumes preallocated PCM. The engine worker wakes when
 PCM is consumed; display snapshots and periodic flash snapshots yield to low PCM
@@ -135,9 +70,6 @@ it does not automatically adopt upstream decoder or hardware-model updates.
 Agreement with the reference runtime does not establish timing or electrical
 parity with a physical FM-1. Imported binaries do not have the performance
 guarantees of the bundled source-native adapters.
-Predicated-block extent scanning is iterative and bounded to 256 nesting levels
-and 65,536 decoded instructions per scan. Excessive or undecodable extents fail
-explicitly instead of exhausting the Android thread's native stack.
 
 If no generated ARM64 code executes during imported startup, import fails with an
 explicit compilation-unavailable error. Known bundled binary engines retain the

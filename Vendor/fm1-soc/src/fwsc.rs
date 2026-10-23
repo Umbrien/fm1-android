@@ -12,7 +12,7 @@
 //! which updates leave alone: real units carry the factory bank there. `usr_fill_defaults`
 //! puts this emulator's own small bank into a blank one, `usr_load_syx` a DX7 32-voice bank.
 
-fn unmask(buf: &mut [u8], mut key: u16) {
+pub(crate) fn unmask(buf: &mut [u8], mut key: u16) {
     for b in buf {
         *b ^= key as u8;
         key = (key << 1) ^ if key & 0x8000 != 0 { 0x1021 } else { 0 };
@@ -69,6 +69,8 @@ pub struct Unpacked {
     pub xip: Vec<u8>,
     /// Where the app area starts in flash (XIP 0x02000000 maps here).
     pub area: usize,
+    pub size: usize,
+    pub key: u16,
     /// The app area's directory: app.bin (offset in the area), the reserved areas VM, PRCT,
     /// BTIF, USR (flash offsets).
     pub dir: Vec<Head>,
@@ -235,7 +237,7 @@ fn unpack_n(file: &[u8], blocks: usize) -> Result<Unpacked, String> {
         app.offset.checked_add(app.size).is_none_or(|end| end > size) {
         return Err("app.bin lies outside the app area".into());
     }
-    Ok(Unpacked { identity: String::new(), raw, xip: flash[area..].to_vec(), area, dir })
+    Ok(Unpacked { identity: String::new(), raw, xip: flash[area..].to_vec(), area, size, key, dir })
 }
 
 /// The SMK-37's factory calibration record (USRTRIM, flash 0xC1000; fm1-to-smk37 docs/01, 2.1):

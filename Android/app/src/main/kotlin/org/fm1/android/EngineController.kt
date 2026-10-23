@@ -122,7 +122,7 @@ class EngineController(context: Context) {
                                 renderCpuTimes.record(cpuElapsed)
                                 renderTimes.record(elapsed)
                             }
-                            if (frames !in 0..512 || (selectedKind < 11 && frames != 512))
+                            if (frames !in 0..512 || (runtimeBackend == 2 && frames != 512))
                                 throw IOException("The instrument did not return complete audio.")
                             for (i in 0 until frames * 2) {
                                 val value = renderBuffer[i]
@@ -778,8 +778,11 @@ class EngineController(context: Context) {
                 "Clipper 1.1 Experimental",
                 "M-VAVE Stock V15 (ARM64 JIT)",
                 "FM-1+VA 102 (ARM64 JIT)",
+                "ChoralRoot 0.26.1",
+                "GHOULBOX 2.3.2",
+                "JIANT 0.9.9",
             )
-        @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+        @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16)
 
         fun safeName(value: String) =
             value.trim().replace(Regex("[^a-zA-Z0-9 _.-]"), "_").ifEmpty { "Project" }.take(80)

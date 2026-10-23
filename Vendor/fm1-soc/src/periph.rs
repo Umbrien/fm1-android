@@ -9,11 +9,10 @@
 //! * TIMER4 `0x10800`: free-running 24 MHz time base (CNT at +4);
 //! * TIMER5 `0x10900`: 10 kHz tick (PRD at 6 MHz), pending CON bit 15,
 //!   acknowledged by writing bit 14, IRQ 63;
-//! * ALNK0 `0x12E00`: four synchronous I2S DMA channels, `LEN` int32 words per
-//!   half (L/R, a 24-bit sample in the low bits of each word) at 44.1 kHz.
-//!   CON1 channel nibbles: bits0..1 mode (0 off), bit2 32-bit words, bit3 RX. A finished channel sets
-//!   CON2 bit(4+channel), cleared by writing bit(channel); CON0 bit15 is
-//!   the half playing, IRQ11. FM-1 connects TX3 to its DAC and has silent RX;
+//! * ALNK0 `0x12E00`: I2S out, double-buffered DMA of `LEN` int32 words per
+//!   half (L/R, a 24-bit sample in the low bits of each word) at 44.1 kHz; a finished half sets
+//!   CON2 bit 7 (cleared by writing bit 3), CON0 bit 15 = the half playing,
+//!   IRQ 11;
 //! * SARADC `0x13100`: CON (start = bit 6, done = bit 7, channel bits 8-11),
 //!   RES = 10-bit value — MASTER pot on ch 4, battery on ch 3;
 //! * the interrupt controller: enable/priority nibbles at `0x1EEF100` for cpu0 and
@@ -34,8 +33,24 @@
 //! * the key/encoder matrix: 11 columns from two 74HC595s (PA4 SER, PA3
 //!   SRCLK, PA1 RCLK, MSB first, a low bit selects the column), rows PA0,
 //!   PA5-PA8, PB7 with pull-ups (low = closed).
+//! * the keys' carbon pills (as Velo, charlesvestal/fm1-velocity, and CS-1 sense them): rows PA7 / PA8 are also SARADC
+//!   channels 0 / 1. A conversion there reads the key of that row in the latched column as a
+//!   divider: the pill (its resistance falling with the force on it, ~100 ohm pressed firmly)
+//!   in series with the matrix diode and the 595's low output (together 186 counts), against the
+//!   row's 10k pull-up, or against the pin's own driver when the row is driven high (its strength
+//!   from HD0 / HD: ~312 / 132 / 51 / 35 ohm, so that a firm press reads 389 / 547 / 740 / 805 as
+//!   CS-1 measured on an FM-1). Open: 1023; driven low: 0. A press (Action::Key, at the velocity
+//!   of Action::KeyVel) lands in 1.5 ms at a force of 0.33 + 0.67 vel / 127 (the pill: 100 ohm at
+//!   1, ~3k at 0.33: the lightest press that seats, below CS-1's PRESS pulled up, ~990 driven)
+//!   and stays there; Action::Pressure presses a held key to another velocity's force over 20 ms;
+//!   a release lifts it in 8 ms. A count of noise. The digital scan still sees the key as
+//!   pressed from Action::Key to its release. A row that is neither pulled up nor driven reads
+//!   adc_value as before.
 
 use std::collections::VecDeque;
+
+/// `Periph::adc_state`: CON, done, IRQ, the sample, the noise generator
+pub(crate) type AdcState = (u32, bool, bool, u16, u32);
 
 pub const CPU_HZ: u64 = 240_000_000;
 /// TIMER4 counts the 24 MHz crystal; TIMER5 runs from OSC/4.
@@ -60,7 +75,7 @@ const MIDI_BAUD: u64 = 31_250;
 const MIDI_QUEUE_MAX: usize = 3125;
 
 /// UART1's receive side (see the module notes).
-#[derive(Clone, PartialEq, Default)]
+#[derive(Default)]
 struct Uart {
     con0: u32,
     rxsadr: u32,
@@ -91,7 +106,7 @@ const TMR_DIV: [u64; 16] = [1, 4, 16, 64, 2, 8, 32, 128, 256, 1024, 4096, 16384,
 /// crystal, bits 4-7 the prescaler, bit 15 pending, written bit 14 clears it), CNT (where it
 /// counts from), PRD (the count that raises the interrupt and restarts). The stock firmware
 /// runs its usr_timer engine (the 2 ms ADC scan, key scan) on TIMER1.
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, Default)]
 struct Tmr {
     con: u32,
     prd: u32,
@@ -126,7 +141,6 @@ const ENC: [[u8; 4]; 7] = [
 /// Quadrature states in turning order: (A, B).
 const GRAY: [(u8, u8); 4] = [(0, 0), (1, 0), (1, 1), (0, 1)];
 
-#[derive(Clone, PartialEq)]
 pub struct Periph {
     pub cycles: u64,
     /// Emulated CPU clock (cycles per second of firmware time).
@@ -160,7 +174,7 @@ pub struct Periph {
     alnk_con1: u32,
     alnk_con3: u32,
     alnk_pend: u32,
-    alnk_adr: [u32; 4],
+    alnk_adr: u32,
     alnk_len: u32,
     alnk_half: u32,
     alnk_next: u64,
@@ -216,6 +230,16 @@ pub struct Periph {
     led_last: u64,
     led_since: u64,
     pub keys_down: [bool; 41],
+    /// The keys' force (the module notes): a ramp from `from` to `to` over `dur` cycles from `t0`
+    key_force: [Ramp; 41],
+    /// FM-1: the velocity of the next presses (Action::KeyVel; 1..127)
+    pub key_vel: u8,
+    /// Port A's direction (1 = input), pull-ups and drive strength, for the rows' readings
+    pa_dir: u32,
+    pa_pu: u32,
+    pa_hd0: u32,
+    pa_hd: u32,
+    adc_noise: u32,
     enc_state: [u8; 8],
     enc_pending: [i32; 8],
     enc_next: [u64; 8],
@@ -241,6 +265,44 @@ pub enum Action {
     Midi { b: u8 },
     /// SMK-37: the next keys' velocity, as microseconds between their two contacts.
     Vel { us: u32 },
+    /// FM-1: the next keys' velocity (1..127): how hard they land on their pills.
+    KeyVel { vel: u8 },
+    /// FM-1: a held key pressed to the force of velocity `vel` (aftertouch; 1..127).
+    Pressure { id: u8, vel: u8 },
+}
+
+/// A key's force: from `from` to `to` (0..1) over `dur` cycles from cycle `t0`.
+#[derive(Debug, Clone, Copy, Default)]
+struct Ramp {
+    from: f32,
+    to: f32,
+    t0: u64,
+    dur: u64,
+}
+
+impl Ramp {
+    fn at(&self, t: u64) -> f32 {
+        if self.dur == 0 || t >= self.t0 + self.dur {
+            return self.to;
+        }
+        let x = t.saturating_sub(self.t0) as f32 / self.dur as f32;
+        self.from + (self.to - self.from) * x
+    }
+}
+
+/// The force a key lands at for velocity `vel` (1..127)
+fn vel_force(vel: u8) -> f32 {
+    0.33 + 0.67 * vel.clamp(1, 127) as f32 / 127.0
+}
+
+/// The ADC reading of a row with a key of force `f` on it (0: open, buttons 1) against the
+/// source resistance `rs` (the pull-up or the pin driver), in counts
+fn pill_reading(f: f32, rs: f32) -> f32 {
+    if f <= 0.001 {
+        return 1023.0;
+    }
+    let r = 100.0 * f.min(1.0).powf(-3.06);
+    186.0 + 837.0 * r / (r + rs)
 }
 
 impl Default for Periph {
@@ -268,7 +330,7 @@ impl Default for Periph {
             alnk_con1: 0,
             alnk_con3: 0,
             alnk_pend: 0,
-            alnk_adr: [0; 4],
+            alnk_adr: 0,
             alnk_len: 0,
             alnk_half: 0,
             alnk_next: u64::MAX,
@@ -303,6 +365,13 @@ impl Default for Periph {
             led_last: 0,
             led_since: 0,
             keys_down: [false; 41],
+            key_force: [Ramp::default(); 41],
+            key_vel: 100,
+            pa_dir: 0,
+            pa_pu: 0,
+            pa_hd0: 0,
+            pa_hd: 0,
+            adc_noise: 1,
             enc_state: [0; 8],
             enc_pending: [0; 8],
             enc_next: [0; 8],
@@ -321,34 +390,12 @@ impl Default for Periph {
 pub struct Due {
     /// A half buffer finished playing: (RAM address, words).
     pub audio_half: Option<(u32, u32)>,
-    /// Bytes per TX sample word (2 for 16-bit, 4 for 24-bit in int32).
-    pub audio_word_bytes: u8,
-    /// Completed input halves, channel order. FM-1 has no analogue input, so
-    /// the bus writes silence before dispatching the shared ALNK interrupt.
-    pub audio_rx: [Option<(u32, u32, u8)>; 4],
     /// A UART byte the RX DMA wrote: (address, byte).
     pub uart_rx: Option<(u32, u8)>,
     pub actions: Vec<Action>,
 }
 
-/// Hardware counters expose the low word of the exact integer quotient. Avoid
-/// a software 128-bit division while the product fits the host's native word.
-#[inline]
-fn scaled_count(elapsed: u64, rate: u64, clock: u64) -> u32 {
-    match elapsed.checked_mul(rate) {
-        Some(product) => (product / clock) as u32,
-        None => (elapsed as u128 * rate as u128 / clock as u128) as u32,
-    }
-}
-
 impl Periph {
-    /// TIMER4 value without CPU0's optional polling acceleration. CPU1 has a
-    /// frozen view of the shared clock and must not advance it by reading.
-    pub(crate) fn timer4_count(&self) -> u32 {
-        if self.t4_con & 1 == 0 { 0 }
-        else { scaled_count(self.cycles - self.t4_base, T4_HZ, self.hz) }
-    }
-
     pub fn ms(&self) -> u64 {
         self.cycles * 1000 / self.hz
     }
@@ -460,19 +507,17 @@ impl Periph {
         }
         if self.cycles >= self.alnk_next {
             let words = self.alnk_len.max(2);
-            // All channels use one LRCLK and buffer phase. The local device HAL
-            // programs 0x5000 for TX3 and 0x500d for RX0+TX3 (Open V13's
-            // app/board/audio.c and fm1_audio.h); bit3 of each nibble selects RX.
-            for channel in 0..4 {
-                let config = (self.alnk_con1 >> (4 * channel)) & 15;
-                if config & 3 == 0 { continue; }
-                let width = if config & 4 != 0 { 4 } else { 2 };
-                let address = self.alnk_adr[channel].wrapping_add(self.alnk_half * words * width);
-                if config & 8 != 0 { due.audio_rx[channel] = Some((address, words, width as u8)); }
-                else if channel == 3 { due.audio_half = Some((address, words)); due.audio_word_bytes = width as u8; }
-                self.alnk_pend |= 0x10 << channel;
-            }
+            due.audio_half = Some((self.alnk_adr.wrapping_add(self.alnk_half * words * 4), words));
             self.alnk_half ^= 1;
+            // every channel CON1 sets up pends with the block: FM1 Open's driver takes its
+            // interrupt from the receive channel 0 (pending bit 4), the stock one from transmit
+            // channel 3 (bit 7)
+            for ch in 0..4 {
+                if (self.alnk_con1 >> (4 * ch)) & 0xf != 0 {
+                    self.alnk_pend |= 0x10 << ch;
+                }
+            }
+            self.alnk_pend |= 0x80;
             self.alnk_next += self.half_period();
             self.audio_halves += 1;
         }
@@ -513,7 +558,19 @@ impl Periph {
                 if self.board == crate::Board::Smk37 {
                     self.smk.key(id, down, self.cycles, self.smk_vel);
                 } else if (id as usize) < 41 {
-                    self.keys_down[id as usize] = down;
+                    let (i, t) = (id as usize, self.cycles);
+                    if self.keys_down[i] != down {
+                        let (to, ms) = if down { (if id < 14 { 1.0 } else { vel_force(self.key_vel) }, 1.5) } else { (0.0, 8.0) };
+                        self.key_force[i] = Ramp { from: self.key_force[i].at(t), to, t0: t, dur: self.ms_cycles(ms) };
+                    }
+                    self.keys_down[i] = down;
+                }
+            }
+            Action::KeyVel { vel } => self.key_vel = vel.clamp(1, 127),
+            Action::Pressure { id, vel } => {
+                let (i, t) = (id as usize, self.cycles);
+                if i < 41 && self.keys_down[i] && id >= 14 {
+                    self.key_force[i] = Ramp { from: self.key_force[i].at(t), to: vel_force(vel), t0: t, dur: self.ms_cycles(20.0) };
                 }
             }
             Action::Enc { enc, clicks } => {
@@ -590,6 +647,18 @@ impl Periph {
     /// MIDI bytes dropped (no receiver set up: the UART off or no DMA ring; or a full queue).
     pub fn midi_dropped(&self) -> u64 {
         self.uart.dropped
+    }
+
+    /// The SARADC's state as a polling loop can change it (`machine`'s loop skip): CON, done,
+    /// the IRQ line, and what a conversion start sets: the sample (a row's key force, which
+    /// ramps) and the noise generator (it moves on every row conversion, so rounds that convert
+    /// a row never repeat, and a failed probe's undo puts it back).
+    pub(crate) fn adc_state(&self) -> AdcState {
+        (self.adc_con, self.adc_done, self.adc_irq, self.adc_sample, self.adc_noise)
+    }
+
+    pub(crate) fn set_adc_state(&mut self, (con, done, irq, sample, noise): AdcState) {
+        (self.adc_con, self.adc_done, self.adc_irq, self.adc_sample, self.adc_noise) = (con, done, irq, sample, noise);
     }
 
     /// One cycle; true when something timed is due (call `advance(0)`).
@@ -706,7 +775,7 @@ impl Periph {
                     }
                     self.last_cnt_read = self.cycles;
                 }
-                self.timer4_count()
+                ((self.cycles - self.t4_base) as u128 * T4_HZ as u128 / self.hz as u128) as u32
             }
             0x10400 | 0x10500 | 0x10600 | 0x10700 => {
                 let t = &self.tmr[((addr - 0x10400) >> 8) as usize];
@@ -737,14 +806,14 @@ impl Periph {
             0x12e04 => self.alnk_con1,
             0x12e08 => self.alnk_pend,
             0x12e0c => self.alnk_con3,
-            0x12e10 | 0x12e14 | 0x12e18 | 0x12e1c => self.alnk_adr[((addr - 0x12e10) / 4) as usize],
+            0x12e1c => self.alnk_adr,
             0x12e20 => self.alnk_len,
             // conversions are instant: done (bit 7) once started. Bit 4 reads as written
             // (Felucca's `|= 0x40` read-modify-write must keep it); the stock scan's "skip
             // while bit 4" passes because its IRQ 24 handler writes CON = 0x40, then 0.
             0x13100 => (self.adc_con & !0x80) | if self.adc_done { 0x80 } else { 0 },
-            0x13104 if self.board == crate::Board::Smk37 => self.adc_sample as u32,
-            0x13104 => self.adc_value[((self.adc_con >> 8) & 0xf) as usize] as u32,
+            // RES: the conversion's value, taken when it started (the FM-1's rows: their key then)
+            0x13104 => self.adc_sample as u32,
             // the latch's set word reads the pending bits; its clear word reads 0: the stock
             // IRQ 122 handler acknowledges with `[0x1EEF1A4] |= 4`, and a read-back of every
             // pending bit there cleared a pending context switch too (a task ran on after
@@ -760,7 +829,7 @@ impl Periph {
                     0
                 } else {
                     let into = (self.cycles - self.tick_start).min(self.tick_period());
-                    scaled_count(into, self.tick_prd as u64, self.tick_period())
+                    (into as u128 * self.tick_prd as u128 / self.tick_period() as u128) as u32
                 }
             }
             0x1eef0f4 => self.tick_prd,
@@ -787,14 +856,16 @@ impl Periph {
         // next instruction (leaving compiled code). Not for the FM-1's ADC: its conversions are
         // instant, so a write there changes only whether IRQ 24 is raised (then it does).
         // OberVave converts ~1 M times a second, 5 writes each: every one left the JIT.
-        // FM-1 GPIO writes update the matrix/LED latch synchronously at the
-        // helper's exact cycle. They cannot change a timer, DMA deadline or IRQ.
-        // Keeping the existing deadline avoids forcing a scheduler round trip
-        // for every bit clocked into the front-panel shift register. Flash CS
-        // effects are handled by Soc and executable-write barriers independently.
-        let synchronous = self.board != crate::Board::Smk37 &&
-            (matches!(addr, 0x13100 | 0x13104) || (0x50000..=0x503ff).contains(&addr));
-        if !synchronous { self.next_due = 0; }
+        // Nor for the port pins (the key matrix's shift registers, the LED lines: nothing timed;
+        // Felucca and its forks scan the matrix with ~0.5 M writes a second) but PD0, the flash
+        // chip select, nor for the counters' words that ignore writes (the stock firmware's core
+        // 1 writes TIMER5's ~1.3 M times a second).
+        let untimed = matches!(addr, 0x13100 | 0x13104) && self.board != crate::Board::Smk37
+            || matches!(addr, 0x50000..=0x501ff) && addr != 0x500c0
+            || matches!(addr, 0x10808 | 0x10904);
+        if !untimed {
+            self.next_due = 0;
+        }
         match addr {
             0x10800 => {
                 if self.t4_con & 1 == 0 && v & 1 != 0 {
@@ -849,7 +920,7 @@ impl Periph {
             0x12e04 => self.alnk_con1 = v & 0xffff,
             0x12e08 => self.alnk_pend &= !((v & 0xf) << 4), // bits 0-3 clear pendings 4-7
             0x12e0c => self.alnk_con3 = v & 0xff,
-            0x12e10 | 0x12e14 | 0x12e18 | 0x12e1c => self.alnk_adr[((addr - 0x12e10) / 4) as usize] = v,
+            0x12e1c => self.alnk_adr = v,
             0x12e20 => self.alnk_len = v & 0xffff,
             0x13100 => {
                 // bit 6 with bit 4 (enable) starts a conversion, which finishes at once; with
@@ -867,6 +938,8 @@ impl Periph {
                             self.adc_next = self.cycles + (self.hz / 25_000).max(1);
                             self.next_due = 0;
                         } else {
+                            let ch = (v >> 8) & 0xf;
+                            self.adc_sample = self.row_reading(ch).unwrap_or(self.adc_value[ch as usize]);
                             self.adc_done = true;
                             if self.adc_irq != (v & 0x20 != 0) {
                                 self.next_due = 0;
@@ -951,6 +1024,23 @@ impl Periph {
             0x50000 => {
                 self.led_credit();
                 self.pa_write(v);
+            }
+            // (also kept as plain SFRs: the rows' readings need them)
+            0x50008 => {
+                self.pa_dir = v;
+                return false;
+            }
+            0x50010 => {
+                self.pa_pu = v;
+                return false;
+            }
+            0x50018 => {
+                self.pa_hd0 = v;
+                return false;
+            }
+            0x5001c => {
+                self.pa_hd = v;
+                return false;
             }
             0x501c0 => {
                 self.led_credit();
@@ -1067,6 +1157,39 @@ impl Periph {
             // RCLK rising edge: outputs follow the shift register
             self.sr_latched = self.sr_shift;
         }
+    }
+
+    fn ms_cycles(&self, ms: f64) -> u64 {
+        (self.hz as f64 * ms / 1000.0) as u64
+    }
+
+    /// ADC channel 0 / 1 (row PA7 / PA8): the key in the latched column, through the row's
+    /// pull-up or its driver (the module notes). None: not a row, or a row neither pulled up nor
+    /// driven (the channel's adc_value then, as before).
+    fn row_reading(&mut self, ch: u32) -> Option<u16> {
+        let (row, pin) = match ch { 0 => (3usize, 7u32), 1 => (4usize, 8u32), _ => return None };
+        let m = 1u32 << pin;
+        let rs = if self.pa_dir & m == 0 {
+            if self.pa_out & m == 0 {
+                return Some(0);
+            }
+            [312.0, 132.0, 51.0, 35.0][((self.pa_hd0 & m != 0) as usize) | ((self.pa_hd & m != 0) as usize) << 1]
+        } else if self.pa_pu & m != 0 {
+            10_000.0
+        } else {
+            return None;
+        };
+        let t = self.cycles;
+        let mut v = 1023.0f32;
+        for col in 0..11usize {
+            let id = KEYMAP[row][col];
+            if self.sr_latched & (1 << col) == 0 && id >= 0 {
+                v = v.min(pill_reading(self.key_force[id as usize].at(t), rs));
+            }
+        }
+        self.adc_noise = self.adc_noise.wrapping_mul(1_103_515_245).wrapping_add(12345);
+        let n = ((self.adc_noise >> 16) % 3) as f32 - 1.0;
+        Some((v + if v < 1023.0 { n } else { 0.0 }).round().clamp(0.0, 1023.0) as u16)
     }
 
     /// Row bits (0..5) pulled low by a closed contact in a selected column.
@@ -1190,102 +1313,49 @@ fn note_name(n: &str) -> Option<u8> {
 mod tests {
     use super::*;
 
+    /// One conversion on ADC channel `ch`, as hal/fm1_adc.h starts and takes it.
+    fn convert(p: &mut Periph, ch: u32) -> u32 {
+        p.write(0x13100, 0x40 | ch << 8 | 0x0e);
+        p.write(0x13100, 0x40 | 0x10 | ch << 8 | 0x0e);
+        p.read(0x13104).unwrap()
+    }
+
     #[test]
-    fn alnk_channel_modes_widths_pending_masks_and_shared_phase_are_exact() {
-        for channel in 0..4 { for config in 0..16 { for words in [0, 1, 2, 6, 255, 256, 65535] {
-            let mut p = Periph::default();
-            let base = 0xffff_fff0u32;
-            p.write(0x12e10 + channel * 4, base);
-            p.write(0x12e20, words);
-            p.write(0x12e04, config << (channel * 4));
-            p.write(0x12e00, 0x800);
-            let period = p.half_period();
-            let before = p.advance(period - 1);
-            assert!(before.audio_half.is_none() && before.audio_rx.iter().all(Option::is_none));
-            assert_eq!(p.read(0x12e08), Some(0));
-            for half in 0..2 {
-                let event = p.advance(if half == 0 { 1 } else { period });
-                let enabled = config & 3 != 0;
-                let width = if config & 4 != 0 { 4 } else { 2 };
-                let address = base.wrapping_add(half * words.max(2) * width);
-                let mut rx = [None; 4];
-                if enabled && config & 8 != 0 { rx[channel as usize] = Some((address, words.max(2), width as u8)); }
-                assert_eq!(event.audio_rx, rx);
-                assert_eq!(event.audio_half,
-                    (enabled && config & 8 == 0 && channel == 3).then_some((address, words.max(2))));
-                if event.audio_half.is_some() { assert_eq!(event.audio_word_bytes, width as u8); }
-                assert_eq!(p.read(0x12e08), Some(if enabled { 0x10 << channel } else { 0 }));
-                assert_eq!(p.read(0x12e00).unwrap() >> 15, (half ^ 1) & 1);
-                assert_eq!(p.audio_halves, half as u64 + 1);
-                p.write(0x12e08, 1 << channel);
-                assert_eq!(p.read(0x12e08), Some(0));
-            }
-            p.write(0x12e00, 0);
-            assert!(p.advance(period * 2).audio_rx.iter().all(Option::is_none));
-            assert_eq!(p.audio_halves, 2);
-        }}}
+    fn the_rows_read_a_keys_pill() {
         let mut p = Periph::default();
-        p.write(0x12e20, 4); p.write(0x12e04, 0xb6d5); p.write(0x12e00, 0x800);
-        let event = p.advance(p.half_period());
-        assert_eq!(p.read(0x12e08), Some(0xf0));
-        assert_eq!(event.audio_rx, [None, Some((0,4,4)), None, Some((0,4,2))]);
-        assert!(event.audio_half.is_none()); // RX3 never produces another output stream.
-        p.write(0x12e08, 0xa); assert_eq!(p.read(0x12e08), Some(0x50));
-        p.write(0x12e08, 0x50); assert_eq!(p.read(0x12e08), Some(0x50));
-        p.write(0x12e08, 5); assert_eq!(p.read(0x12e08), Some(0));
-        p.write(0x12e00, 0); p.write(0x12e00, 0x800);
-        assert_eq!(p.read(0x12e00).unwrap() >> 15, 0);
-        p.advance(p.half_period());
-        assert_eq!(p.read(0x12e00).unwrap() >> 15, 1);
-    }
-
-    #[test]
-    fn synchronous_gpio_keeps_deadlines_and_matches_forced_service_at_event_edges() {
-        let mut initial = Periph::default();
-        for (a,v) in [(0x10508,5),(0x10500,9),(0x10908,3),(0x10900,1),
-            (0x12e20,2),(0x12e00,0x800),(0x1eef0f4,100),(0x1eef0ec,1),
-            (0x1211c,0x1000),(0x12120,0x1008),(0x12124,1),(0x12100,0x49)] {
-            initial.write(a,v);
-        }
-        initial.apply(&Action::Midi { b: 0x90 });
-        initial.script.push_back((80,Action::Key { id:21,down:true }));
-        initial.advance(0);
-        let deadline = initial.next_due;
-        assert!(deadline > 0);
-        for addr in (0x50000..=0x503fc).step_by(4) {
-            for cycles in [0,1,49,50,51,79,80,81,119,120,121,10_000,76_800] {
-                let mut current = initial.clone(); current.cycles = cycles;
-                let mut legacy = current.clone();
-                for value in [0,0x10,0x18,0x12,0x600,0xffff,0] {
-                    assert_eq!(current.write(addr,value),legacy.write(addr,value));
-                    assert_eq!(current.next_due,deadline);
-                    // Reproduce the former unconditional scheduling invalidation.
-                    legacy.next_due = 0;
-                    let a=current.advance(0); let b=legacy.advance(0);
-                    assert_eq!((a.audio_half,a.audio_word_bytes,a.audio_rx,a.uart_rx,a.actions),(b.audio_half,b.audio_word_bytes,b.audio_rx,b.uart_rx,b.actions));
-                    assert!(current == legacy,"GPIO {addr:x} cycle {cycles}");
-                    // Use the next current deadline for subsequent writes below.
-                    if current.next_due != deadline { break; }
-                }
-            }
-        }
-        // Timer, DMA and interrupt-controller programming retain the barrier.
-        for addr in [0x10500,0x10900,0x10904,0x12e00,0x1eef100,0x1eef1a0] {
-            let mut p=initial.clone(); p.write(addr,0); assert_eq!(p.next_due,0);
-        }
-    }
-
-    #[test]
-    fn scaled_hardware_counters_match_full_precision_across_overflow_boundary() {
-        for elapsed in [0, 1, 239, 240, u32::MAX as u64, u64::MAX / T4_HZ,
-            u64::MAX / T4_HZ + 1, u64::MAX] {
-            for rate in [0, 1, T4_HZ, u32::MAX as u64, u64::MAX] {
-                for clock in [1, 3, CPU_HZ, u64::MAX] {
-                    assert_eq!(scaled_count(elapsed, rate, clock),
-                        (elapsed as u128 * rate as u128 / clock as u128) as u32);
-                }
-            }
-        }
+        let ms = p.hz / 1000;
+        // row PA7 an input with its pull-up, column 0 latched: key 9 (id 23)
+        p.write(0x50008, 1 << 7);
+        p.write(0x50010, 1 << 7);
+        p.sr_latched = !1;
+        assert_eq!(convert(&mut p, 0), 1023, "open");
+        p.apply(&Action::KeyVel { vel: 127 });
+        p.apply(&Action::Key { id: 23, down: true });
+        p.cycles += 2 * ms;
+        assert!((193..=196).contains(&convert(&mut p, 0)), "firmly pressed, pulled up: the diode and a little");
+        // driven high at the strongest (HD0 + HD): ~806 firm
+        p.write(0x50008, 0);
+        p.pa_out |= 1 << 7;
+        p.write(0x50018, 1 << 7);
+        p.write(0x5001c, 1 << 7);
+        let firm = convert(&mut p, 0);
+        assert!((804..=808).contains(&firm), "{firm}");
+        p.apply(&Action::Key { id: 23, down: false });
+        p.cycles += 10 * ms;
+        assert_eq!(convert(&mut p, 0), 1023, "lifted");
+        p.apply(&Action::KeyVel { vel: 1 });
+        p.apply(&Action::Key { id: 23, down: true });
+        p.cycles += 2 * ms;
+        let light = convert(&mut p, 0);
+        assert!((1004..=1012).contains(&light), "a light press reads higher: {light}");
+        p.apply(&Action::Pressure { id: 23, vel: 127 });
+        p.cycles += 25 * ms;
+        assert!(convert(&mut p, 0) < 810, "pressed harder");
+        p.sr_latched = !2;
+        assert_eq!(convert(&mut p, 0), 1023, "another column: its key is open");
+        p.pa_out &= !(1 << 7);
+        assert_eq!(convert(&mut p, 0), 0, "driven low");
+        assert_eq!(convert(&mut p, 4), 900, "the MASTER pot as before");
     }
 
     /// Advance to `cycle`, collecting the bytes the UART's DMA wrote.

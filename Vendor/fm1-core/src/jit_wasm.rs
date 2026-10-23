@@ -1,7 +1,7 @@
 //! WebAssembly JIT for the blocks of micro-ops `Cpu::run_fast` interprets: the wasm32 build's
 //! counterpart of jit.rs, with the same rules and the interpreter as the oracle (the two must
 //! leave the same machine state; like the AArch64 JIT it leaves the add / subtract flags alone:
-//! a producer right before a consumer stays on the careful path).
+//! a producer whose flags a later instruction reads stays on the careful path).
 //!
 //! A hot block becomes a region: the block and the blocks reachable from it over fixed edges
 //! (fall-through, branch, goto and call targets), compiled together as one function in a small
@@ -216,7 +216,6 @@ extern "C" fn h_write<B: Bus>(ctx: *mut Ctx, addr: u32, v: u32, idx: u32, w: u32
     let bus = unsafe { &mut *(ctx.bus as *mut B) };
     unsafe { sync(ctx, bus, idx) };
     let code = bus.code_writes();
-    let xip = bus.xip_writes();
     match w {
         1 => bus.write8(addr, v as u8),
         2 => bus.write16(addr, v as u16),
@@ -224,7 +223,7 @@ extern "C" fn h_write<B: Bus>(ctx: *mut Ctx, addr: u32, v: u32, idx: u32, w: u32
     }
     // (a write to a word of RAM code: this region may include what it changed, so leave; the
     // next entry checks the region against memory)
-    if bus.next_tick_due() || bus.code_writes() != code || bus.xip_writes() != xip {
+    if bus.next_tick_due() || bus.code_writes() != code {
         ctx.brk = 1;
     }
 }
@@ -241,10 +240,8 @@ extern "C" fn h_op<B: Bus, const PROF: bool>(ctx: *mut Ctx, op: *const Fast, idx
     if PROF {
         cpu.profile_helper(unsafe { &*op });
     }
-    let code = bus.code_writes();
-    let xip = bus.xip_writes();
-    let j = cpu.exec_fast(bus, unsafe { &*op }, next_pc);
-    if bus.next_tick_due() || bus.code_writes() != code || bus.xip_writes() != xip {
+    let j = cpu.exec_fast(bus, unsafe { *op }, next_pc);
+    if bus.next_tick_due() {
         ctx.brk = 1;
     }
     match j {

@@ -30,7 +30,7 @@ it is distinct from excluded firmware-derived generated code.
 
 The FM1 Open adapter builds the public portable preview source, excluding board
 hardware drivers and the proprietary sdk/lib/libfm1_engine.a. Its independent
-logical store is 536576 bytes; the other ten catalogue entries own 1 MiB stores.
+logical store is 536576 bytes; the other catalogue entries own 1 MiB stores.
 
 The Android icon at Android/app/src/main/res/drawable/icon.png is a 192×192 resize
 of an existing generated original app icon. The original design study used the
@@ -58,3 +58,37 @@ with separate 1 MiB flash. No FM-1+VA source or optional preset pack is vendored
 The inspected official pages do not specify firmware redistribution terms;
 `licenses/NOTICE-fm1va` retains attribution without treating the host’s license
 as a license grant for that firmware.
+
+ChoralRoot 0.26.1 (Quixotic7 / ChoralRoot contributors, derived from Felucca)
+and GHOULBOX 2.3.2 (Jason Persinger, derived from Felucca by Leo Kuroshita /
+Hügelton Instruments) compile their actual DSP, UI and storage source for Android
+ARM64 through their source-host HALs, as native kinds 14 and 15. They use the
+shared per-instance state transformation and independent 1 MiB saves. Kind 13
+remains reserved for imported packages. Source revisions, source/resource hashes
+and generated-header hashes are pinned in Core/native/additions.lock.json:
+
+| Source | Release | Exact commit |
+| --- | --- | --- |
+| ChoralRoot | 0.26.1 | `7d97982a7db3dad2da456a3e4d4478548b6571d9` |
+| GHOULBOX | 2.3.2 | `71ac3f87e0a33b08831f11a89fbd6012de8024ce` |
+
+Original release package hashes select the source-native catalogue engines;
+explicitly imported binaries still use the separate binary runtime. ChoralRoot's
+source-host second-part job is synchronous on the engine worker. Its process-exit
+and at-exit hooks are disabled for embedding. GHOULBOX user sample references
+use checked flash offsets instead of truncated host pointers. The pristine source
+cache is retained; adaptations apply only to ignored build copies. Original
+licensing notices and component texts are retained in licenses/.
+
+## Emulator refresh and JIANT — 2026-10-23
+
+fm1-emu is pinned to `c1c045fc067da024d686e7a690806e2e55795042`;
+see `Vendor/UPSTREAM.md` for local embedding adaptations.
+JIANT 0.9.9 (kind 16) uses the published stable installer source
+`6968b20ed195c284a2523138d16f59ee06477490`, rather than the later development
+branch. Its exact public package selects the matching source-native build.
+The upstream `web/emu/felucca_web.c` bridge supplies DSP, UI, keys and NOR storage;
+our additions builder namespaces symbols and isolates writable state per instance.
+Source, generated resources, package and component notices are pinned in the
+additions/package locks. It uses no PI32 interpreter or JIT. USB, serial, hardware
+update and device-specific behavior remain outside this host bridge.

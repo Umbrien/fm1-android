@@ -26,3 +26,10 @@ See licenses/LICENSE-kotlin-stdlib and licenses/NOTICE-kotlin-stdlib.
 Material Components for Android 1.13.0, AndroidX and Material icons:
 Android Open Source Project / Google / respective contributors, Apache-2.0.
 See licenses/NOTICE-android-ui and licenses/LICENSE-material-components.
+
+ChoralRoot 0.26.1: Quixotic7; GHOULBOX 2.3.2: Jason Persinger.
+Both derive from Felucca by Leo Kuroshita / Hügelton Instruments, GPL-3.0-only,
+with separately licensed components. See licenses/NOTICE-choralroot and
+licenses/NOTICE-ghoulbox and accompanying component license texts.
+
+JIANT 0.9.9: Juan Ignacio Antonucci, derived from Felucca by Leo Kuroshita / Huegelton Instruments; GPL-3.0-only. See licenses/NOTICE-jiant and jiant-* notices.

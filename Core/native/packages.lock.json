@@ -121,6 +121,39 @@
       "sha256": "7b169a69b30570581d0ebc7b44851e3e08898d2956ade155363bcf18fac5c348",
       "kind": 12,
       "path": "Research/FM1VA/FM-1+VA-102.fwsc"
+    },
+    {
+      "id": "choralroot",
+      "name": "ChoralRoot",
+      "version": "0.26.1",
+      "source": "https://github.com/Quixotic7/ChoralRootFM1/tree/v0.26.1",
+      "url": "https://github.com/Quixotic7/ChoralRootFM1/releases/download/v0.26.1/choralroot-0.26.1.fwsc",
+      "size": 610313,
+      "sha256": "f118c4e7efc500d7dcf69df1685960b417870865c9a327aed9ec5443eeae8db1",
+      "kind": 14,
+      "path": "Research/ChoralRoot/choralroot-0.26.1.fwsc"
+    },
+    {
+      "id": "ghoulbox",
+      "name": "GHOULBOX",
+      "version": "2.3.2",
+      "source": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/tree/ghoulbox-v2.3.2",
+      "url": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/releases/download/ghoulbox-v2.3.2/ghoulbox-2.3.2.fwsc",
+      "size": 610086,
+      "sha256": "069f6d783db1e05776a89006ecba07a0abfcd2cc7a0fe6fa64db096b5ecad4c8",
+      "kind": 15,
+      "path": "Research/Ghoulbox/ghoulbox-2.3.2.fwsc"
+    },
+    {
+      "id": "jiant",
+      "name": "JIANT",
+      "version": "0.9.9",
+      "source": "https://github.com/juanjiant-bit/JIANT/tree/6968b20ed195c284a2523138d16f59ee06477490",
+      "url": "https://juanjiant-bit.github.io/JIANT/firmware/felucca-v0.9.9-6968b20.fwsc",
+      "size": 610089,
+      "sha256": "2e35791d0839388a1f6ade64bfab20ff83a10d1b1af22e1a378c1bba92848023",
+      "kind": 16,
+      "path": "Research/Jiant/jiant-0.9.9.fwsc"
     }
   ]
 }

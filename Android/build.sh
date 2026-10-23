@@ -25,6 +25,7 @@ if [[ "${1:-}" == "--core" ]]; then
  export ANDROID_NDK_HOME="$NDK"
  export FM1_NATIVE_CLIPPER="$ROOT/Research/NativeClipper/upstream-clipper"
  export FM1_NATIVE_SLOOP="$ROOT/Research/NativeSloop/upstream-sloop-2.8"
+ export FM1_NATIVE_ADDITIONS="$ROOT/Research/NativeAdditions"
  export FM1_NATIVE_FAMILY="$ROOT/Research/NativeFamily"
  export FM1_NATIVE_OFFICIAL_PREVIEW="$ROOT/Research/NativeOfficial/upstream-fm1-open"
  export FM1_NATIVE_SKIFF="$ROOT/Research/NativeSkiff/upstream-skiff"

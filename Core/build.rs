@@ -26,6 +26,8 @@ fn main() {
         "clipper_build.py",
         "fm1_native_clipper",
     );
+    println!("cargo:rustc-check-cfg=cfg(fm1_native_additions)");
+    build_extra("FM1_NATIVE_ADDITIONS", "additions_build.py", "fm1_native_additions");
     build_family();
     println!("cargo:rerun-if-env-changed=FM1_NATIVE_SLOOP");
     println!("cargo:rerun-if-changed=native");

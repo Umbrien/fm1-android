@@ -1,7 +1,7 @@
 # FM-1 for Android
 
 An unofficial offline FM-1 synthesizer app for Android 8.0+ (API 26), arm64.
-Nine pinned source-compiled instruments plus stock V15 and FM-1+VA 102
+Twelve pinned source-compiled instruments plus stock V15 and FM-1+VA 102
 share a native Kotlin multitouch panel with six finishes, fixed-size knobs, keyboard illumination and a collapsible header.
 No account, telemetry or network permission is required by the app.
 
@@ -20,6 +20,9 @@ No account, telemetry or network permission is required by the app.
 | Clipper (experimental) | 1.1-experimental | 10 |
 | M-VAVE Stock (recompiled) | V15 | 11 (ARM64 JIT) |
 | FM-1+VA (recompiled) | 102 | 12 (ARM64 JIT) |
+| ChoralRoot | 0.26.1 | 14 |
+| GHOULBOX | 2.3.2 | 15 |
+| JIANT | 0.9.9 | 16 |
 
 Use **Instruments → Open .fwsc…** to import an FM-1 firmware from local storage.
 The app unpacks the original binary and compiles hot PI32 instruction blocks to
@@ -29,7 +32,7 @@ package with another filename reuses its state. Imports are size/structure check
 and must produce audio and execute compiled code during a bounded startup before
 replacing the current instrument. Failed imports preserve the current instrument.
 
-The nine bundled source-native instruments still use their pinned C/Rust builds.
+The twelve bundled source-native instruments still use their pinned C/Rust builds.
 Stock V15, FM-1+VA and imports use the ARM64 JIT with the existing hardware model
 and interpreter for instructions that cannot be compiled. This is binary
 recompilation, not conversion back to source: firmware compatibility and real-time
@@ -119,7 +122,7 @@ adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 
-The instrumentation app uses the same local signer. Sixteen default cases
+The instrumentation app uses the same local signer. Eighteen default cases
 exercise all engines, SLOOP files/audio, and real Activity input/lifecycle/state.
 The additional iOS exchange case is optional and requires explicit external test
 fixtures through `FM1_EXCHANGE_FIXTURES`; no private export is included. Tests

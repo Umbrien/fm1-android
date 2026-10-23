@@ -17,6 +17,7 @@ def main():
     commands = [
         ('prepare.py', 'Research/NativeSloop/upstream-sloop-2.8'),
         ('clipper_prepare.py', 'Research/NativeClipper/upstream-clipper'),
+        ('additions_prepare.py', 'Research/NativeAdditions'),
         ('prepare_family.py', 'Research/NativeFamily'),
         ('official_preview_prepare.py', 'Research/NativeOfficial/upstream-fm1-open'),
         ('skiff_prepare.py', 'Research/NativeSkiff/upstream-skiff'),

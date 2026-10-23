@@ -10,7 +10,7 @@ static void fail(JNIEnv* e,const char* message){jclass c=(*e)->FindClass(e,"java
 JNIEXPORT jlong JNICALL JNI(create)(JNIEnv* e,jclass c,jbyteArray data,jint required){
  (void)c;jsize size=(*e)->GetArrayLength(e,data);jbyte* bytes=(*e)->GetByteArrayElements(e,data,NULL);
  uint32_t kind=instrument_kind_for_fwsc((uint8_t*)bytes,size);void* m=NULL;uint8_t error[512]={0};
- if(kind==(uint32_t)required&&kind>=2&&kind<=12)m=instrument_create((uint8_t*)bytes,size,error,sizeof(error));
+ if(kind==(uint32_t)required&&((kind>=2&&kind<=12)||kind==14||kind==15||kind==16))m=instrument_create((uint8_t*)bytes,size,error,sizeof(error));
  (*e)->ReleaseByteArrayElements(e,data,bytes,JNI_ABORT);
  if(!m){fail(e,error[0]?(char*)error:"Exact instrument is unavailable.");return 0;}
  if(instrument_kind(m)!=(uint32_t)required){instrument_destroy(m);fail(e,"Instrument identity mismatch.");return 0;}

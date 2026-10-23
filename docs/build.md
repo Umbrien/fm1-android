@@ -116,6 +116,7 @@ fetches package records from Core/native/packages.lock.json:
 ```sh
 python Core/native/prepare.py "$PWD/Research/NativeSloop/upstream-sloop-2.8"
 python Core/native/clipper_prepare.py "$PWD/Research/NativeClipper/upstream-clipper"
+python Core/native/additions_prepare.py "$PWD/Research/NativeAdditions"
 python Core/native/prepare_family.py "$PWD/Research/NativeFamily"
 python Core/native/official_preview_prepare.py "$PWD/Research/NativeOfficial/upstream-fm1-open"
 python Core/native/skiff_prepare.py "$PWD/Research/NativeSkiff/upstream-skiff"
@@ -164,7 +165,7 @@ path or symlink belongs in Git. The source/notice/resource checks still apply.
 adb install -r Android/build/FM1-android-arm64.apk
 ```
 
-The --core option prepares the Rust static archive and all nine native engines.
+The --core option prepares the Rust static archive and all twelve native engines.
 Later Kotlin/JNI-only iterations may omit --core to reuse that archive. APK assets
 are checked against packages.lock.json before packaging. Native ELF segments
 use 16 KiB alignment. This is an arm64-only APK with minSdk 26 and targetSdk 35.
@@ -205,7 +206,7 @@ The test package shares the app's local signer and uses standard Android SDK
 Instrumentation. The script exits nonzero if its final JSON receipt is absent
 or reports failures.
 
-Host Rust regression may also be run with all six FM1_NATIVE_* environment
+Host Rust regression may also be run with all seven FM1_NATIVE_* environment
 variables from Android/build.sh pointing at the prepared cache:
 
 ```sh

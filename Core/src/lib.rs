@@ -65,7 +65,7 @@ impl Interpreter {
     /// Offline profiling tool output; contains firmware-derived decoded instructions.
     /// Keep generated files local and ignored, just like the input firmware package.
     pub fn static_kernel_blocks(&self) -> String {
-        self.cpu.static_kernel_blocks()
+        panic!("Static kernel export is unavailable with the updated upstream runtime")
     }
     fn load(bytes: &[u8], jit: bool) -> Result<Self, String> {
         if !(960..=MAX_PACKAGE).contains(&bytes.len()) {
@@ -87,6 +87,7 @@ impl Interpreter {
         let params = 0x01c0_0000 + 0x7fc00;
         soc.write32(params, params + 0x40);
         cpu.regs[0] = fm1_soc::stock_boot(&mut soc, &fw.flash, params, fw.board);
+        soc.sfc_boot(fw.key, fw.app_end);
         soc.periph.apply(&Action::Adc { ch: 4, value: 720 });
         Ok(Self {
             cpu,
@@ -142,7 +143,8 @@ impl Interpreter {
     fm1_native_official_preview,
     fm1_native_expansion,
     fm1_native_clipper,
-    fm1_native_skiff
+    fm1_native_skiff,
+    fm1_native_additions
 ))]
 mod native_family;
 #[cfg(any(
@@ -151,7 +153,8 @@ mod native_family;
     fm1_native_official_preview,
     fm1_native_expansion,
     fm1_native_clipper,
-    fm1_native_skiff
+    fm1_native_skiff,
+    fm1_native_additions
 ))]
 mod native_sloop;
 mod sha256;
@@ -164,7 +167,8 @@ pub enum Instrument {
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     Native(native_sloop::Native),
 }
@@ -177,12 +181,7 @@ impl Instrument {
                 fn cpu(c: &Cpu) -> String {
                     format!("{{\"retired\":{},\"jit\":{}}}", c.insn_count, c.jit_profile_json())
                 }
-                let slices = m.soc.cpu1_slice_profile.as_ref().map(|h| h.iter().enumerate()
-                    .filter(|(_, v)| v.0 != 0).map(|(i, v)| format!("{{\"log2ExclusiveUpperBound\":{i},\"calls\":{},\"retired\":{}}}", v.0, v.1)).collect::<Vec<_>>().join(",")).unwrap_or_default();
-                let failures = m.soc.cpu1_fixed_point_failures.as_ref().map(|h| h.iter()
-                    .map(|(reason, count)| format!("\"{reason}\":{count}"))
-                    .collect::<Vec<_>>().join(",")).unwrap_or_default();
-                format!("{{\"cpu0\":{},\"cpu1\":{},\"halted\":{},\"mmio\":{},\"ramCodeWrites\":{},\"cpu1Slices\":[{slices}],\"cpu1FixedPoints\":{:?},\"cpu1FixedPointFailures\":{{{failures}}}}}", cpu(&m.cpu), m.cpu1.as_ref().map_or("null".into(), cpu), m.halted, m.soc.mmio_profile_json(), m.soc.ram.code_writes, m.soc.cpu1_fixed_points)
+                format!("{{\"cpu0\":{},\"cpu1\":{},\"halted\":{}}}", cpu(&m.cpu), m.cpu1.as_ref().map_or("null".into(), cpu), m.halted)
             }
             #[allow(unreachable_patterns)]
             _ => "null".into(),
@@ -195,7 +194,8 @@ impl Instrument {
             fm1_native_official_preview,
             fm1_native_expansion,
             fm1_native_clipper,
-            fm1_native_skiff
+            fm1_native_skiff,
+            fm1_native_additions
         ))]
         if std::env::var_os("FM1_FORCE_INTERPRETER").is_none() {
             if let Some(api) = native_family::for_package(bytes) {
@@ -220,7 +220,8 @@ impl Instrument {
                 fm1_native_official_preview,
                 fm1_native_expansion,
                 fm1_native_clipper,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_additions
             ))]
             Self::Native(_) => String::new(),
         }
@@ -234,7 +235,8 @@ impl Instrument {
                 fm1_native_official_preview,
                 fm1_native_expansion,
                 fm1_native_clipper,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_additions
             ))]
             Self::Native(m) => m.render(out),
         }
@@ -259,7 +261,8 @@ pub unsafe extern "C" fn instrument_backend(m: *const Instrument) -> u32 {
             fm1_native_official_preview,
             fm1_native_expansion,
             fm1_native_clipper,
-            fm1_native_skiff
+            fm1_native_skiff,
+            fm1_native_additions
         ))]
         Some(Instrument::Native(_)) => 2,
     }
@@ -310,7 +313,8 @@ pub unsafe extern "C" fn instrument_native_kind_for_fwsc(data: *const u8, len: u
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     if let Some(api) = native_family::for_package(std::slice::from_raw_parts(data, len)) {
         return api.kind;
@@ -347,7 +351,8 @@ pub unsafe extern "C" fn instrument_native_kind_for_sha256(data: *const u8, len:
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     if let Some(api) = native_family::for_digest(digest, 0) {
         return api.kind;
@@ -362,7 +367,8 @@ pub unsafe extern "C" fn instrument_native_kind(m: *const Instrument) -> u32 {
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     if let Some(Instrument::Native(m)) = m.as_ref() {
         return m.kind();
@@ -385,7 +391,8 @@ pub unsafe extern "C" fn instrument_workload_metrics(
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     if let Some(Instrument::Native(m)) = m.as_mut() {
         return m.metrics(out, capacity.min(16));
@@ -464,7 +471,8 @@ pub unsafe extern "C" fn instrument_key(m: *mut Instrument, id: u32, down: bool)
                 fm1_native_official_preview,
                 fm1_native_expansion,
                 fm1_native_clipper,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_additions
             ))]
             Instrument::Native(m) => m.key(id, down),
         }
@@ -486,7 +494,8 @@ pub unsafe extern "C" fn instrument_release_all(m: *mut Instrument) {
                 fm1_native_official_preview,
                 fm1_native_expansion,
                 fm1_native_clipper,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_additions
             ))]
             Instrument::Native(m) => m.release_all(),
         }
@@ -510,7 +519,8 @@ pub unsafe extern "C" fn instrument_encoder(m: *mut Instrument, id: u32, delta: 
                 fm1_native_official_preview,
                 fm1_native_expansion,
                 fm1_native_clipper,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_additions
             ))]
             Instrument::Native(m) => m.encoder(id, delta),
         }
@@ -530,7 +540,8 @@ pub unsafe extern "C" fn instrument_volume(m: *mut Instrument, value: u32) {
                 fm1_native_official_preview,
                 fm1_native_expansion,
                 fm1_native_clipper,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_additions
             ))]
             Instrument::Native(m) => m.volume(value),
         }
@@ -551,7 +562,8 @@ pub unsafe extern "C" fn instrument_snapshot(
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     if let Instrument::Native(m) = m {
         return m.snapshot(pixels, leds);
@@ -589,7 +601,8 @@ pub unsafe extern "C" fn instrument_flash(m: *mut Instrument, out: *mut u8, len:
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     if let Instrument::Native(m) = m {
         return m.flash(out, len);
@@ -623,7 +636,8 @@ pub unsafe extern "C" fn instrument_restore(
         fm1_native_official_preview,
         fm1_native_expansion,
         fm1_native_clipper,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_additions
     ))]
     if let Instrument::Native(m) = m {
         return m.restore(std::slice::from_raw_parts(data, len));
@@ -631,7 +645,9 @@ pub unsafe extern "C" fn instrument_restore(
     let Instrument::Interpreter(m) = m else {
         unreachable!()
     };
-    m.soc.restore_flash(std::slice::from_raw_parts(data, len))
+    if len != RAM { return false; }
+    m.soc.restore_flash(std::slice::from_raw_parts(data, len));
+    true
 }
 #[cfg(test)]
 mod tests {
@@ -954,7 +970,7 @@ mod compiler_tests {
                     assert_eq!(a.render(&mut x, 4_000_000), b.render(&mut y, 4_000_000));
                     assert_eq!(x, y, "PCM divergence at cpu0 pc {:x}/{:x}", a.cpu.pc, b.cpu.pc);
                     assert!(!a.halted && !b.halted);
-                    assert!(a.cpu.architectural_state() == b.cpu.architectural_state(), "CPU0 architectural divergence");
+                    assert_eq!(a.cpu.architectural_state(), b.cpu.architectural_state(), "CPU0 architectural divergence");
                     assert!(a.cpu1.as_ref().map(Cpu::architectural_state) == b.cpu1.as_ref().map(Cpu::architectural_state),
                         "CPU1 architectural divergence");
                     assert_eq!(a.cpu.insn_count, b.cpu.insn_count);
@@ -990,6 +1006,32 @@ mod compiler_tests {
             assert_eq!(a.cpu1.as_ref().map(|c| c.regs), b.cpu1.as_ref().map(|c| c.regs), "mode {mode} cpu1");
             assert_eq!(a.soc.periph.cycles, b.soc.periph.cycles, "mode {mode} clock");
             eprintln!("FM-1+VA mode {mode}: exact polyphonic PCM, CPU state and clock match");
+        }
+    }
+
+    #[test]
+    fn binary_compiler_public_outputs_match_reference() {
+        let Some(paths) = std::env::var_os("FM1_COMPILER_PACKAGES") else { return; };
+        for path in std::env::split_paths(&paths) {
+            let bytes = std::fs::read(&path).unwrap();
+            let mut a = Interpreter::load(&bytes, false).unwrap();
+            let mut b = Interpreter::load(&bytes, true).unwrap();
+            for block in 0..600 {
+                if block == 200 || block == 400 {
+                    for m in [&mut a, &mut b] {
+                        for id in [21, 25, 28, 32] {
+                            m.soc.periph.apply(&Action::Key { id, down: block == 200 });
+                        }
+                    }
+                }
+                let (mut x, mut y) = ([0f32; 1024], [0f32; 1024]);
+                assert_eq!(a.render(&mut x, 4_000_000), b.render(&mut y, 4_000_000), "block {block}");
+                assert!(!a.halted && !b.halted);
+                assert_eq!(x, y, "PCM at block {block}, {}", path.display());
+                assert_eq!(a.soc.lcd.fb, b.soc.lcd.fb, "LCD at block {block}");
+                assert_eq!(a.soc.flash.mem, b.soc.flash.mem, "flash at block {block}");
+                assert_eq!(a.cpu.regs, b.cpu.regs, "registers at block {block}");
+            }
         }
     }
 

@@ -85,8 +85,10 @@ class EngineInstrumentation : Instrumentation() {
         val m = NativeEngine.create(bytes, kind)
         try {
             require(m != 0L && NativeEngine.kind(m) == kind, "wrong compiled native kind")
+            require(NativeEngine.backend(m) == 2 && NativeEngine.jitInstructions(m) == 0L,
+                "catalogue entry did not use source-native code")
             NativeEngine.volume(m, 716)
-            advance(m, 23040)
+            advance(m, 88200)
             val key = if (kind == 4) 15 else 21
             NativeEngine.key(m, key, true)
             val peak = advance(m, 44544)
@@ -171,7 +173,7 @@ class EngineInstrumentation : Instrumentation() {
         val runs = JSONArray()
         // Exercise original packages through the binary path, including two source-native
         // catalogue entries. No catalogue-based dispatch can satisfy these checks.
-        for (kind in intArrayOf(11, 12, 3, 4)) {
+        for (kind in intArrayOf(11, 12, 14, 15, 3, 4)) {
             val bytes = asset(kind)
             val compiled = NativeEngine.createBinary(bytes, true)
             val reference = NativeEngine.createBinary(bytes, false)
@@ -638,9 +640,13 @@ class EngineInstrumentation : Instrumentation() {
                 }
                 controller.setPaused(true)
                 barrier(controller)
+                // The engine barrier only drains rendering work; checkpoint IO has its own queue.
+                val persistence = field(controller, "persistence")
+                (field(persistence, "executor") as java.util.concurrent.ExecutorService)
+                    .submit {}.get(10, TimeUnit.SECONDS)
                 val directory = File(targetContext.filesDir, "Instruments")
                 val save = File(directory, "$kind${if (kind == 6) ".preview.flash" else ".flash"}")
-                require(save.readBytes().last() != fresh.last(), "edited state was not saved")
+                require(save.readBytes().last() != fresh.last(), "kind $kind edited state was not saved")
                 val otherStates = directory.listFiles()!!.filter { it != save }
                     .associate { it.name to ProjectSnapshot.digest(it.readBytes()) }
                 val projectFiles = controller.listProjects().associateWith {
@@ -1123,6 +1129,9 @@ class EngineInstrumentation : Instrumentation() {
             for (kind in 2..10) check("engine-$kind") { engine(kind) }
             check("engine-11-stock") { interpretedEngine(11) }
             check("engine-12-fm1va") { interpretedEngine(12) }
+            check("engine-14-choralroot") { engine(14) }
+            check("engine-15-ghoulbox") { engine(15) }
+            check("engine-16-jiant") { engine(16) }
             check("compiler-binary-parity-and-import", ::compiledFirmware)
             check("sloop-workspace-sample-loop-song", ::workspace)
             if (exchangeTests) check("cross-platform-workspace", ::crossPlatform)

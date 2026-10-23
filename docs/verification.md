@@ -212,3 +212,57 @@ firmwares were compared against the reference interpreter; imports were checked
 through restart, reset, failed replacement and native-engine switching.
 See [compiler.md](compiler.md) for the exact validation boundary, measured speed,
 current limitations and receipt location. Earlier entries above remain historical.
+
+
+## Source-native ChoralRoot and GHOULBOX — 2026-10-22
+
+ChoralRoot 0.26.1 (kind 14) and GHOULBOX 2.3.2 (kind 15) compile the actual
+firmware DSP, UI and NOR storage to native ARM64 through their pinned source-host
+HALs. Native catalogue lookup is exact; renamed/altered content is rejected.
+Generated resources reproduce the locked hashes. The shared host regression
+checks passed for both additions: finite nonzero PCM, LCD output, complete raw
+flash restore, irregular render sizes, and bit-identical interleaved independent
+instances compared with a third reference instance.
+
+The Android engine checks explicitly require source-native backend 2 and zero
+JIT instructions for both entries. Explicit binary imports remain a separate
+path; their bounded compiler/interpreter parity check still includes these
+original release packages. Factory reset/reload checks cover all 13 catalogue
+engines, including cross-engine save isolation. The reset test waits for the
+separate storage queue before reading its checkpoint.
+
+Physical-device sound quality, latency, thermal behavior and complete firmware /
+hardware parity remain unverified. ChoralRoot's source-host second-part job runs
+inline on the engine worker. External exchange fixtures are not requested.
+
+All 18 default Android instrumentation checks passed on the API 37 arm64 emulator.
+Both new engine checks passed with backend 2 and zero JIT instructions. The APK
+passed signature verification and 16 KiB ZIP alignment; all 13 package assets
+matched their locked sizes and hashes. Receipt: `Android/build/test/result.txt`.
+
+## fm1-emu refresh and compiled JIANT — 2026-10-23
+
+Built and locally signed `Android/build/FM1-android-arm64.apk` (29,456,618 bytes,
+SHA-256 `ef6b6c59d8f95f3be90671efbc35ef177701319d74a9de64d8c965e4d1c8a5fe`).
+APK signatures v2/v3 verify. All fourteen firmware selector packages match their
+locked sizes/hashes; the ARM64 library and JIANT notices are present.
+fm1-emu revision is `c1c045fc067da024d686e7a690806e2e55795042`.
+JIANT is source-native 0.9.9, stable source `6968b20ed195c284a2523138d16f59ee06477490`.
+
+Current upstream core/SoC tests: 59 + 40 passed. Package-backed core tests: ten
+passed, two failed. JIANT passes exact identity/hash rejection, real sound/display,
+complete flash round-trip and interleaved instance-isolation checks. Its real
+1730 ms splash requires a two-second startup wait before note tests.
+
+Stock V15 and FM-1+VA 102 boot/sound/flash tests pass. An additional public-output
+comparison passes 600 render blocks per firmware (audio, LCD, flash and general
+registers), including four-note key-down and release. These are host checks.
+Two retained strict architectural-parity tests fail: Stock at block 5, and the
+FM-1+VA multi-mode check. The captured VA difference is arithmetic flags and saved
+PSR; general registers and PCM match at that point. This is unresolved, not a full
+JIT/reference parity pass. Logs remain in ignored Research/update-native-tests-final.log,
+Research/output-parity.log and Research/final-upstream-tests.log.
+
+No Android device was connected. Interactive startup, physical-phone continuity,
+latency, thermal behavior and speed improvement remain unverified. This APK is a
+local test build; no commit, push or publication was requested/performed.
