@@ -776,13 +776,14 @@ class EngineController(context: Context) {
                 "FoMni 0.4",
                 "Jangada 1.0.1",
                 "Clipper 1.2",
-                "M-VAVE Stock V15 (ARM64 JIT)",
-                "FM-1+VA 102 (ARM64 JIT)",
+                "M-VAVE Stock V15 (emulated)",
+                "M-VAVE Stock V16 (emulated)",
+                "Baud Girl FM-1+VA 102 (emulated)",
                 "ChoralRoot 0.27",
                 "GHOULBOX 2.4",
                 "JIANT 0.9.9-par12",
             )
-        @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16)
+        @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 17, 12, 14, 15, 16)
 
         fun safeName(value: String) =
             value.trim().replace(Regex("[^a-zA-Z0-9 _.-]"), "_").ifEmpty { "Project" }.take(80)

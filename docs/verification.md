@@ -1,5 +1,29 @@
 # Verification boundaries
 
+A later 2026-10-28 update advanced fm1-emu to
+`eb0d897cf6e0ebf4c412e2389a113d878ec28dd0` (after 0.3.0) and bundled stock
+V16 alongside stock V15 and Baud Girl 102 as explicitly emulated entries.
+All three passed host identity/boot/LCD/sound/full-flash restore tests. The
+runtime crates passed 122 tests (61 core, 7 ISA, 54 SoC). With all native source
+and all three binary package variables enabled, the core suite passed 32 of 33
+tests. The remaining `fm1va_compiler_matches_reference_polyphony_and_sound_modes`
+diagnostic failed at CPU0 PC `0x2083484`: flags and special-register shadow
+state differed between JIT and interpreter despite matching PCM, PC and general
+registers at that checkpoint. An isolated checkout of the preceding commit
+`57fef41` reproduced the exact same failure with the same package; this update
+neither removes nor weakens that diagnostic. Full architectural parity is not
+claimed.
+
+The dedicated arm64 Android 17 / API 37 emulator passed all 20 default checks,
+including all fifteen bundled engines, actual ARM64 execution for V15/V16/Baud
+Girl, binary/reference PCM/LCD/flash comparisons including V16, sample/workspace
+operations, Activity lifecycle and all fifteen factory reset/reload paths.
+V16's boot/render check took 7882 ms for 145920 frames (startup included); this
+is functionality evidence, not a steady-state real-time or physical-phone
+performance acceptance. Original V15 saves remain kind 11, Baud Girl kind 12,
+and V16 uses independent kind 17. External exchange fixtures and physical-device
+validation were not included.
+
 On 2026-10-28, the firmware refresh passed `scripts/prepare.py` for all fourteen
 exact packages, `cargo test -p fm1-ios-core --release` with all seven native
 source environment variables enabled (32 tests), and `Android/test.sh` on the

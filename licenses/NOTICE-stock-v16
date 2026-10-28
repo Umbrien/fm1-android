@@ -1,0 +1,12 @@
+M-VAVE Stock FM-1 V16 (original firmware, emulated)
+Publisher: M-VAVE / Sinco Audio.
+Official release: https://www.m-vave.com/download (V16, 2026-10-21).
+Original package: https://yms-file-store.oss-cn-hongkong.aliyuncs.com/software/firmware/FM-1.fwsc
+SHA256: d017fb65e70aca97ee29d944470c3515a74581df5c0576bf70de917c7b2b61d5
+
+The unmodified hardware package executes through the MIT fm1-emu CPU and SoC
+runtime, with ARM64 JIT on Android. The firmware and its contents retain the
+publisher's and respective component owners' terms. The emulator's MIT license
+and this app's GPL license do not grant a license to the firmware itself.
+This package is distinct from M-VAVE's public FM1 Open source preview and V15
+recovery image; no V15-specific resource license is asserted for V16.

@@ -33,3 +33,6 @@ with separately licensed components. See licenses/NOTICE-choralroot and
 licenses/NOTICE-ghoulbox and accompanying component license texts.
 
 JIANT 0.9.9-par12: Juan Ignacio Antonucci, derived from Felucca by Leo Kuroshita / Huegelton Instruments; GPL-3.0-only. See licenses/NOTICE-jiant and jiant-* notices.
+
+M-VAVE Stock V16 is bundled as an original emulated firmware package; see
+licenses/NOTICE-stock-v16 for source, exact identity and attribution.

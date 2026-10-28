@@ -82,7 +82,7 @@ licensing notices and component texts are retained in licenses/.
 
 ## Emulator refresh and JIANT — 2026-10-23
 
-fm1-emu is pinned to `c1c045fc067da024d686e7a690806e2e55795042`;
+fm1-emu is pinned to `eb0d897cf6e0ebf4c412e2389a113d878ec28dd0`;
 see `Vendor/UPSTREAM.md` for local embedding adaptations.
 JIANT 0.9.9-par12 (kind 16) uses the published stable installer source
 `527c7e462a1542cbbde2c2cbf6b4bf151954127d`, rather than the later development
@@ -100,3 +100,12 @@ retains the Standard edition at the installer’s latest Standard build,
 Stock V15, FM-1+VA 102, X0X 1.1.0, FoMni 0.4 and Jangada 1.0.1 remained
 current. FM1 Open V14’s browser source fingerprint matches the publisher’s
 workbench metadata; native compilation remains a portable preview.
+
+Stock V16 (kind 17) is the unmodified 718196-byte package linked from M-VAVE’s
+official downloads page (release 2026-10-21):
+https://yms-file-store.oss-cn-hongkong.aliyuncs.com/software/firmware/FM-1.fwsc .
+SHA256: `d017fb65e70aca97ee29d944470c3515a74581df5c0576bf70de917c7b2b61d5`.
+It is bundled alongside V15 and Baud Girl 102 through the CPU/SoC emulator,
+with its own save slot. Baud Girl’s publisher still lists 102 as the latest
+FM-1 release as checked on 2026-10-28. Attribution and firmware terms are in
+`licenses/NOTICE-stock-v16`; V15-specific recovery terms are not extended to V16.

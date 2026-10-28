@@ -156,6 +156,8 @@ class EngineInstrumentation : Instrumentation() {
             var peak = 0.0
             repeat(100) { peak = max(peak, step()) }
             NativeEngine.release(m)
+            require(NativeEngine.backend(m) == 3 && NativeEngine.jitInstructions(m) > 0,
+                "bundled emulated firmware did not execute compiled code")
             require(peak > 0.00001, "silent stock note")
             val pixels = IntArray(57600)
             val leds = FloatArray(41)
@@ -173,7 +175,7 @@ class EngineInstrumentation : Instrumentation() {
         val runs = JSONArray()
         // Exercise original packages through the binary path, including two source-native
         // catalogue entries. No catalogue-based dispatch can satisfy these checks.
-        for (kind in intArrayOf(11, 12, 14, 15, 3, 4)) {
+        for (kind in intArrayOf(11, 12, 17, 14, 15, 3, 4)) {
             val bytes = asset(kind)
             val compiled = NativeEngine.createBinary(bytes, true)
             val reference = NativeEngine.createBinary(bytes, false)
@@ -1134,6 +1136,7 @@ class EngineInstrumentation : Instrumentation() {
             for (kind in 2..10) check("engine-$kind") { engine(kind) }
             check("engine-11-stock") { interpretedEngine(11) }
             check("engine-12-fm1va") { interpretedEngine(12) }
+            check("engine-17-stock-v16") { interpretedEngine(17) }
             check("engine-14-choralroot") { engine(14) }
             check("engine-15-ghoulbox") { engine(15) }
             check("engine-16-jiant") { engine(16) }

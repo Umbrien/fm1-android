@@ -142,7 +142,7 @@ The ignored cache layout is:
 ```text
 Research/NativeSloop/upstream-sloop-2.8/
 Research/NativeClipper/{upstream-clipper,clipper-1.2.fwsc}
-Research/Stock/FM-1_015.fwsc
+Research/Stock/{FM-1_015,FM-1_016}.fwsc
 Research/FM1VA/FM-1+VA-102.fwsc
 Research/NativeFamily/{felucca,x0x,melodee}/
 Research/NativeFamily/{felucca-1.7.0,x0x-1.1.0,melodee-1.6.0-rc.5}.fwsc
@@ -191,8 +191,8 @@ light/dark setting to validate both modes.
 
 The app must already be built/installed. The script wakes the dedicated emulator
 and dismisses its keyguard before injecting real touch events. Default tests need only the exact
-engine package assets already in the app and exercise nineteen core/UI cases, including
-factory reset persistence for all fourteen firmware entries. The
+engine package assets already in the app and exercise twenty core/UI cases, including
+factory reset persistence for all fifteen firmware entries. The
 receipt explicitly records that external exchange fixtures were not supplied.
 Optional cross-platform testing uses a caller-provided directory containing
 swift-generated.fm1project, swift-generated.fm1backup and ios-simulator.fm1project:
@@ -218,6 +218,10 @@ are not evidence for nine-native-engine compatibility.
 
 Set `FM1_STOCK_PACKAGE="$PWD/Research/Stock/FM-1_015.fwsc"` for the host
 stock V15 boot/sound/flash test. The host default uses the interpreter; Android enables the ARM64 JIT.
+
+Set `FM1_STOCK_V16_PACKAGE="$PWD/Research/Stock/FM-1_016.fwsc"` for the
+stock V16 host boot/sound/flash test. V15, V16 and Baud Girl remain separate
+bundled emulated entries and saves.
 
 Set `FM1_VA_PACKAGE="$PWD/Research/FM1VA/FM-1+VA-102.fwsc"` for the
 FM-1+VA host interpreter boot/sound/flash test. Its exact package is fetched by

@@ -9,7 +9,7 @@ the previous instance available and reports an error. Audio is suspended during
 candidate startup; compilation and synthesis belong to the serial engine worker,
 not the AudioTrack output thread.
 
-Twelve bundled instruments use their pinned source-native adapters. Stock V15,
+Twelve bundled instruments use their pinned source-native adapters. Stock V15/V16,
 FM-1+VA 102 and imported binaries use the PI32v2 machine runtime with its ARM64
 compiler enabled on Android. Imports execute their supplied binary even when a
 source-native counterpart exists.
@@ -17,15 +17,19 @@ source-native counterpart exists.
 ## Execution and storage
 
 The runtime now follows fm1-emu revision
-`c1c045fc067da024d686e7a690806e2e55795042` (2026-10-23). It replaces the previous
+`eb0d897cf6e0ebf4c412e2389a113d878ec28dd0` (2026-10-28, after release 0.3.0). It replaces the previous
 local CPU/JIT and scheduling experiments with upstream register caching, compiled
 flag handling, computed jump chaining, polling-loop skipping and self-modifying
-RAM-code checks. Cold or unsupported operations use the interpreter. Firmware
+RAM-code checks. The update adds V16 protected-image decryption through its
+EXT_RESERVED directory, FPU rounding/rev16 instructions, delayed LCD interrupts,
+and the P33 watchdog/chip reset model. Cold or unsupported operations use the interpreter. Firmware
 instructions, peripherals, interrupts and dual-core scheduling remain emulated.
 
 Each CPU reserves a bounded 64 MiB code cache. Android uses the actual page size:
 each publication receives fresh whole pages, RW during construction and RX after
 instruction-cache synchronization. No page is simultaneously writable/executable.
+Android retains heap-owned indirect chain slots; linking changes data without
+patching or reopening published RX pages.
 Failed publication leaves earlier blocks executable. Code, chain slots and helper
 descriptors are released with their CPU. Helper panics return through generated
 frames before unwinding to the existing error boundary. JIT instruction counts

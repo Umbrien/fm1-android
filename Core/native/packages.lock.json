@@ -154,6 +154,17 @@
       "sha256": "9738f473f8b5bed4ba6aafb6132f520d03e09683521a32090701fbf4eb6abb3c",
       "kind": 16,
       "path": "Research/Jiant/jiant-0.9.9-par12.fwsc"
+    },
+    {
+      "id": "stock-v16",
+      "name": "M-VAVE Stock",
+      "version": "V16",
+      "source": "https://www.m-vave.com/download",
+      "url": "https://yms-file-store.oss-cn-hongkong.aliyuncs.com/software/firmware/FM-1.fwsc",
+      "size": 718196,
+      "sha256": "d017fb65e70aca97ee29d944470c3515a74581df5c0576bf70de917c7b2b61d5",
+      "kind": 17,
+      "path": "Research/Stock/FM-1_016.fwsc"
     }
   ]
 }

@@ -55,6 +55,17 @@ pub(crate) type AdcState = (u32, bool, bool, u16, u32);
 pub const CPU_HZ: u64 = 240_000_000;
 /// TIMER4 counts the 24 MHz crystal; TIMER5 runs from OSC/4.
 const T4_HZ: u64 = 24_000_000;
+
+/// a * b / c, as u32: in u64 while the product fits (TIMER4's count: 2^64 / 24 M cycles, 53
+/// minutes at 240 MHz), else in u128, the same quotient (a u128 division is a library call;
+/// firmware polls these counts)
+#[inline]
+fn mul_div(a: u64, b: u64, c: u64) -> u32 {
+    match a.checked_mul(b) {
+        Some(p) => (p / c) as u32,
+        None => (a as u128 * b as u128 / c as u128) as u32,
+    }
+}
 const T5_HZ: u64 = 6_000_000;
 /// TIMER4 ticks per I2S frame (Felucca audio.c DAC_TICKS: 44.1 kHz).
 const FRAME_T4: u64 = 544;
@@ -215,6 +226,11 @@ pub struct Periph {
     /// the transfer under way finishes.
     pub spi2_pending: bool,
     spi2_next: u64,
+    /// USB frames (usb.rs): the next, and cycles per millisecond; MAX = no cable.
+    pub(crate) usb_next: u64,
+    pub(crate) usb_period: u64,
+    /// The cycle the watchdog runs out at (p33.rs; MAX: stopped).
+    pub(crate) wdt_at: u64,
     tmr: [Tmr; 4],
     uart: Uart,
     /// The UART's interrupt condition (enabled and pending), kept for `any_pending`.
@@ -227,6 +243,9 @@ pub struct Periph {
     /// Front-panel LEDs: cycles each key/button LED has been lit, and the
     /// cycle of the last change of the LED lines or the column latch.
     led_acc: [u64; 41],
+    /// The LED state (lines, latched column) credited last and the time pending for it.
+    led_key: (u32, u16),
+    led_pend: u64,
     led_last: u64,
     led_since: u64,
     pub keys_down: [bool; 41],
@@ -354,6 +373,9 @@ impl Default for Periph {
             adc_next: u64::MAX,
             spi2_pending: false,
             spi2_next: u64::MAX,
+            usb_next: u64::MAX,
+            usb_period: 0,
+            wdt_at: u64::MAX,
             tmr: [Tmr { next: u64::MAX, ..Default::default() }; 4],
             uart: Uart { next: u64::MAX, ot_next: u64::MAX, ..Default::default() },
             uart_irq: false,
@@ -362,6 +384,8 @@ impl Default for Periph {
             pa_out: 0,
             ph_out: 0,
             led_acc: [0; 41],
+            led_key: (0, 0),
+            led_pend: 0,
             led_last: 0,
             led_since: 0,
             keys_down: [false; 41],
@@ -392,6 +416,10 @@ pub struct Due {
     pub audio_half: Option<(u32, u32)>,
     /// A UART byte the RX DMA wrote: (address, byte).
     pub uart_rx: Option<(u32, u8)>,
+    /// A USB frame is due (the SoC runs the host's millisecond: usb.rs).
+    pub usb_frame: bool,
+    /// The watchdog ran out (the SoC resets the chip).
+    pub wdt: bool,
     pub actions: Vec<Action>,
 }
 
@@ -442,7 +470,7 @@ impl Periph {
     /// The next cycle at which something timed happens.
     fn next_event(&self) -> u64 {
         let mut n = self.t5_next.min(self.alnk_next).min(self.tick_next).min(self.spi2_next).min(self.adc_next).min(self.spi1_irq_at);
-        n = n.min(self.uart.next).min(self.uart.ot_next);
+        n = n.min(self.uart.next).min(self.uart.ot_next).min(self.usb_next).min(self.wdt_at);
         for t in &self.tmr {
             n = n.min(t.next);
         }
@@ -524,6 +552,17 @@ impl Periph {
         if self.cycles >= self.uart.next {
             due.uart_rx = self.uart_receive();
         }
+        if self.cycles >= self.usb_next {
+            due.usb_frame = true;
+            self.usb_next += self.usb_period;
+            if self.usb_next <= self.cycles {
+                self.usb_next = self.cycles + self.usb_period;
+            }
+        }
+        if self.cycles >= self.wdt_at {
+            self.wdt_at = u64::MAX;
+            due.wdt = true;
+        }
         if self.cycles >= self.uart.ot_next {
             self.uart.ot_next = u64::MAX;
             if self.uart.con0 & 1 != 0 {
@@ -549,6 +588,46 @@ impl Periph {
         }
         self.next_due = self.next_event();
         due
+    }
+
+    /// A chip reset: the chip's own state as at power-on. What is outside it stays: the clock
+    /// and the runner's settings, the audio played so far, the keys, encoders and pots, the key
+    /// matrix's shift registers (74HC595s: the columns they hold), the SMK-37's panel, the LEDs'
+    /// light so far, the script, the UART's bytes on their way in and a USB cable (its frames).
+    /// A field added to `Periph` is reset unless it is named here.
+    pub(crate) fn chip_reset(&mut self) {
+        let mut uart = Uart { next: self.uart.next, ot_next: u64::MAX, ..Default::default() };
+        (uart.q, uart.dropped) = (std::mem::take(&mut self.uart.q), self.uart.dropped);
+        let old = std::mem::take(self);
+        *self = Periph {
+            cycles: old.cycles,
+            hz: old.hz,
+            skip_idle: old.skip_idle,
+            room_cap: old.room_cap,
+            skipped: old.skipped,
+            audio: old.audio,
+            audio_halves: old.audio_halves,
+            adc_value: old.adc_value,
+            usb_next: old.usb_next,
+            usb_period: old.usb_period,
+            uart,
+            sr_shift: old.sr_shift,
+            sr_latched: old.sr_latched,
+            led_acc: old.led_acc,
+            led_last: old.led_last,
+            led_since: old.led_since,
+            keys_down: old.keys_down,
+            key_force: old.key_force,
+            key_vel: old.key_vel,
+            enc_state: old.enc_state,
+            enc_pending: old.enc_pending,
+            enc_next: old.enc_next,
+            board: old.board,
+            smk: old.smk,
+            smk_vel: old.smk_vel,
+            script: old.script,
+            ..Default::default()
+        };
     }
 
     pub fn apply(&mut self, a: &Action) {
@@ -775,7 +854,7 @@ impl Periph {
                     }
                     self.last_cnt_read = self.cycles;
                 }
-                ((self.cycles - self.t4_base) as u128 * T4_HZ as u128 / self.hz as u128) as u32
+                mul_div(self.cycles - self.t4_base, T4_HZ, self.hz)
             }
             0x10400 | 0x10500 | 0x10600 | 0x10700 => {
                 let t = &self.tmr[((addr - 0x10400) >> 8) as usize];
@@ -829,7 +908,7 @@ impl Periph {
                     0
                 } else {
                     let into = (self.cycles - self.tick_start).min(self.tick_period());
-                    (into as u128 * self.tick_prd as u128 / self.tick_period() as u128) as u32
+                    mul_div(into, self.tick_prd as u64, self.tick_period())
                 }
             }
             0x1eef0f4 => self.tick_prd,
@@ -1066,8 +1145,28 @@ impl Periph {
         if lines == 0 {
             return;
         }
+        // the same lines and column as last time: the time adds up, and the LEDs it lights are
+        // charged when the state changes or the fractions are taken (Felucca's matrix scan writes
+        // the port half a million times a second, most without a change)
+        let key = (lines, self.sr_latched);
+        if key == self.led_key {
+            self.led_pend += dt;
+            return;
+        }
+        self.led_flush();
+        self.led_key = key;
+        self.led_pend = dt;
+    }
+
+    /// Charge the time pending for the LED state last credited to its LEDs.
+    fn led_flush(&mut self) {
+        let (lines, latched) = self.led_key;
+        let dt = std::mem::take(&mut self.led_pend);
+        if dt == 0 {
+            return;
+        }
         for col in 0..11usize {
-            if self.sr_latched & (1 << col) != 0 {
+            if latched & (1 << col) != 0 {
                 continue;
             }
             for row in 1..5usize {
@@ -1084,6 +1183,7 @@ impl Periph {
     /// The fraction of time each LED was lit since the last call.
     pub fn led_take(&mut self) -> [f32; 41] {
         self.led_credit();
+        self.led_flush();
         let span = (self.cycles - self.led_since).max(1) as f32;
         self.led_since = self.cycles;
         let mut out = [0f32; 41];

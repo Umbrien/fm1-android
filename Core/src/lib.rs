@@ -21,9 +21,12 @@ const FM1VA_SHA256: [u8; 32] = [
     123, 22, 154, 105, 179, 5, 112, 88, 29, 14, 188, 123, 68, 133, 30, 62, 8, 137, 141, 41, 86,
     173, 225, 85, 54, 59, 207, 24, 250, 197, 195, 72,
 ];
+const STOCK_V16_SIZE: usize = 718196;
+const STOCK_V16_SHA256: [u8; 32] = [208, 23, 251, 101, 231, 10, 202, 151, 238, 41, 217, 68, 71, 12, 53, 21, 167, 69, 129, 223, 92, 5, 118, 191, 112, 222, 145, 124, 123, 43, 97, 213];
 fn interpreted_kind(bytes: &[u8]) -> u32 {
     let expected = match bytes.len() {
         STOCK_SIZE => (STOCK_SHA256, 11),
+        STOCK_V16_SIZE => (STOCK_V16_SHA256, 17),
         FM1VA_SIZE => (FM1VA_SHA256, 12),
         _ => return 0,
     };
@@ -884,6 +887,10 @@ mod stock_tests {
     #[test]
     fn stock_v15_exact_identity_boot_sound_and_flash() {
         check_interpreted_package("FM1_STOCK_PACKAGE", 11);
+    }
+    #[test]
+    fn stock_v16_exact_identity_boot_sound_and_flash() {
+        check_interpreted_package("FM1_STOCK_V16_PACKAGE", 17);
     }
     #[test]
     fn fm1va_102_exact_identity_boot_sound_and_flash() {

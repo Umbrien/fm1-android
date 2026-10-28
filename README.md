@@ -1,7 +1,7 @@
 # FM-1 for Android
 
 An unofficial offline FM-1 synthesizer app for Android 8.0+ (API 26), arm64.
-Twelve pinned source-compiled instruments plus stock V15 and FM-1+VA 102
+Twelve pinned source-compiled instruments plus emulated stock V15, stock V16 and Baud Girl FM-1+VA 102
 share a native Kotlin multitouch panel with six finishes, fixed-size knobs, keyboard illumination and a collapsible header.
 No account, telemetry or network permission is required by the app.
 
@@ -18,8 +18,9 @@ No account, telemetry or network permission is required by the app.
 | FoMni | 0.4 | 8 |
 | Jangada | 1.0.1 | 9 |
 | Clipper | 1.2 | 10 |
-| M-VAVE Stock (recompiled) | V15 | 11 (ARM64 JIT) |
-| FM-1+VA (recompiled) | 102 | 12 (ARM64 JIT) |
+| M-VAVE Stock (emulated) | V15 | 11 (ARM64 JIT) |
+| M-VAVE Stock (emulated) | V16 | 17 (ARM64 JIT) |
+| Baud Girl FM-1+VA (emulated) | 102 | 12 (ARM64 JIT) |
 | ChoralRoot | 0.27 | 14 |
 | GHOULBOX | 2.4 | 15 |
 | JIANT | 0.9.9-par12 | 16 |
@@ -33,7 +34,7 @@ and must produce audio and execute compiled code during a bounded startup before
 replacing the current instrument. Failed imports preserve the current instrument.
 
 The twelve bundled source-native instruments still use their pinned C/Rust builds.
-Stock V15, FM-1+VA and imports use the ARM64 JIT with the existing hardware model
+Stock V15/V16, FM-1+VA and imports use the ARM64 JIT with the existing hardware model
 and interpreter for instructions that cannot be compiled. This is binary
 recompilation, not conversion back to source: firmware compatibility and real-time
 speed are not guaranteed. Unsupported CPU instructions or hardware can stop a
@@ -122,7 +123,7 @@ adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 
-The instrumentation app uses the same local signer. Nineteen default cases
+The instrumentation app uses the same local signer. Twenty default cases
 exercise all engines, SLOOP files/audio, and real Activity input/lifecycle/state.
 The additional iOS exchange case is optional and requires explicit external test
 fixtures through `FM1_EXCHANGE_FIXTURES`; no private export is included. Tests

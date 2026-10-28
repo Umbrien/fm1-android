@@ -406,6 +406,41 @@ impl Jit {
     }
 }
 
+/// Link a chain exit (`Ctx::slot`, as `run` returned it) to `body`, the compiled block it leads
+/// to: the exit then goes straight in. AArch64: the slot is the exit's own branch instruction,
+/// patched into `b body` (the code cache is one 64 MB mapping, within a `b`'s reach); x86-64:
+/// a word the exit's code loads and jumps through.
+///
+/// # Safety
+/// `slot` must be a chain exit of code in this JIT's cache (non-null), `body` a compiled body.
+pub(crate) unsafe fn link(slot: *mut u64, body: *const u8) {
+    #[cfg(all(target_arch = "aarch64", not(target_os = "android")))]
+    {
+        let site = slot as *mut u32;
+        let off = (body as isize - site as isize) / 4;
+        assert!((-(1 << 25)..(1 << 25)).contains(&off), "chain target out of a branch's reach");
+        let insn = 0x1400_0000u32 | (off as u32) & 0x03ff_ffff;
+        #[cfg(target_os = "macos")]
+        {
+            pthread_jit_write_protect_np(0);
+            site.write_volatile(insn);
+            pthread_jit_write_protect_np(1);
+            sys_icache_invalidate(site as *mut c_void, 4);
+        }
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            site.write_volatile(insn);
+            flush_icache(site as *const u8, 4);
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]
+        site.write_volatile(insn); // (as CodeCache::write: no flush on the other systems)
+    }
+    #[cfg(any(not(target_arch = "aarch64"), target_os = "android"))]
+    {
+        *slot = body as u64;
+    }
+}
+
 /// Run compiled code: returns the instructions executed, the chain slot of the exit taken (or
 /// null), and whether it stopped after a swapped pair with an interrupt pending (where
 /// `run_fast` stops too); cpu.pc is set. `inside`: inside a then-part or rep loop (the careful
@@ -579,6 +614,28 @@ fn h_op_quiet<const PROF: bool>(ctx: *mut Ctx, op: *const Fast, _idx: u32, _next
     0
 
     })
+}
+}
+
+code_abi! {
+/// `sti` (`Fast::SetIe { on: true }`): `h_op`'s work for it without the executor's dispatch. It
+/// opens the bus's interrupt window, so the ticks are synced first and brk checked after.
+fn h_sti<B: Bus>(ctx: *mut Ctx, idx: u32) {
+    // SAFETY: as h_op.
+    let ctx = unsafe { &mut *ctx };
+    let bus = unsafe { &mut *(ctx.bus as *mut B) };
+    let cpu = unsafe { &mut *ctx.cpu };
+    unsafe { sync(ctx, bus, idx) };
+    if cpu.stop_pc != 0 {
+        cpu.stop_io = 1;
+    }
+    cpu.profile_helper(&Fast::SetIe { on: true });
+    cpu.ie = true;
+    bus.irq_window();
+    if bus.next_tick_due() || bus.code_writes() != ctx.code_version {
+        ctx.brk = 1;
+    }
+    ctx.irq = 2;
 }
 }
 
@@ -906,7 +963,7 @@ impl Gen<'_> {
     /// Call a helper with the guest registers in memory, where it reads and sets them.
     fn call(&mut self, f: u64) {
         self.flush();
-        self.a.mov64(9, f);
+        self.a.ldr_lit_x(9, f);
         self.a.blr(9);
         self.reload();
     }
@@ -920,6 +977,25 @@ impl Gen<'_> {
     }
     /// Continue at a fixed pc: straight into its compiled body when the slot holds one,
     /// else back to Rust, which fills the slot once that block is compiled.
+    /// (AArch64: the "slot" is the branch itself, `b` to the exit code right after it until
+    /// `link` patches it into `b body`: one direct branch instead of a slot load and a branch
+    /// through a register, on every block's way out)
+    #[cfg(not(target_os = "android"))]
+    fn chain(&mut self, pc: u32, count: u32) {
+        self.flush();
+        let (site, back) = (self.a.label(), self.a.label());
+        self.a.add_imm(DONE, DONE, count);
+        self.a.bind(site);
+        self.a.b(back);
+        self.a.bind(back);
+        self.a.mov32(9, pc);
+        self.a.str(9, CPU, off_pc());
+        self.a.adr(10, site);
+        self.a.str_x(10, CTX, OFF_SLOT);
+        self.a.mov(0, DONE);
+        self.a.b(self.exit);
+    }
+    #[cfg(target_os = "android")]
     fn chain(&mut self, pc: u32, count: u32) {
         self.flush();
         let mut slot = Box::new(0u64);
@@ -955,7 +1031,7 @@ impl Gen<'_> {
             self.a.cbnz(9, back);
         }
         self.a.ubfx(10, 12, 1, ITAB_BITS);
-        self.a.mov64(11, self.itab);
+        self.a.ldr_lit_x(11, self.itab);
         self.a.add_x_lsl(11, 11, 10, 4);
         self.a.ldr(13, 11, 0);
         self.a.cmp(13, 12);
@@ -1266,8 +1342,9 @@ fn emit_op<B: Bus>(g: &mut Gen, fast: Fast, idx: u32, next_pc: u32, profile: boo
             g.a.bind(taken);
             g.chain(next_pc, count);
         }
-        // (the multiply-accumulates 7 / 8 read d too: through the interpreter's executor)
-        Fast::FOp { d, a, b, op } if !matches!(op, 7 | 8) => {
+        // (the multiply-accumulates 7 / 8 read d too, and the rounding conversions other than
+        // trunc have no single A64 instruction here: through the interpreter's executor)
+        Fast::FOp { d, a, b, op } if matches!(op, 0..=6 | 0x1f | 0x5f | 0x8f | 0x9f) => {
             g.ld_reg(0, a);
             match op {
                 0x1f | 0x5f => {
@@ -1602,8 +1679,28 @@ fn emit_op<B: Bus>(g: &mut Gen, fast: Fast, idx: u32, next_pc: u32, profile: boo
             }
             g.st_reg(2, d);
         }
-        // (`sti` stays with the executor: it opens the bus's interrupt window)
+        // (`sti` opens the bus's interrupt window: a helper of its own, `h_sti`)
         Fast::SetIe { on: false } if off_ie() < 4096 => g.a.strb(ZR, CPU, off_ie()),
+        Fast::SetIe { on: true } => {
+            g.a.mov_x(0, CTX);
+            g.a.add_imm(1, DONE, idx);
+            g.call(h_sti::<B> as *const () as u64);
+            bus_used = true;
+        }
+        // rev8 / rev16 / revs (exec_raw's route 22: d bits 28-31, the source 24-27, the form
+        // 22-23; popcnt, form 3, stays with the executor)
+        Fast::Raw { route: 22, raw } if (raw >> 22) & 3 != 3 => {
+            g.ld_reg(0, ((raw >> 24) & 0xf) as u8);
+            match (raw >> 22) & 3 {
+                0 => g.a.rev(0, 0),
+                1 => g.a.rev16(0, 0),
+                _ => {
+                    g.a.rev16(0, 0);
+                    g.a.sxth(0, 0);
+                }
+            }
+            g.st_reg(0, ((raw >> 28) & 0xf) as u8);
+        }
         Fast::LdPair { p, b, off } => {
             match b {
                 Base::Reg(r) => g.ld_reg(0, r),
@@ -1638,7 +1735,7 @@ fn emit_op<B: Bus>(g: &mut Gen, fast: Fast, idx: u32, next_pc: u32, profile: boo
             let p = Box::new(other);
             let p = { let ptr = &*p as *const Fast; g.owned.push(p); ptr };
             g.a.mov_x(0, CTX);
-            g.a.mov64(1, p as *const Fast as u64);
+            g.a.ldr_lit_x(1, p as *const Fast as u64);
             g.idx_w2(idx);
             g.a.mov32(3, next_pc);
             g.call(op_helper::<B>(&other, profile));
@@ -1743,7 +1840,7 @@ fn compile<B: Bus>(ops: &[crate::BOp], swaps: &[(Fast, Fast, u8)], then: &[crate
         let valid = g.a.label();
         // no code word written since the snapshot was last found current: no call
         g.a.ldr_x(9, CTX, OFF_VER);
-        g.a.mov64(1, guard);
+        g.a.ldr_lit_x(1, guard);
         g.a.ldr_x(10, 1, 0);
         g.a.cmp_x(9, 10);
         g.a.b_cond(AC::Eq, valid);
@@ -1887,7 +1984,7 @@ mod tests {
         hot(&mut j, 1, 32, &[op(Fast::MovI { d: 0, v: 42 })], &mem);
         let (_, slot, _) = unsafe { run(from, &mut cpu, &mut bus, &mem, 0, 10, false) };
         assert!(!slot.is_null());
-        unsafe { *slot = j.body(1).unwrap() as u64; }
+        unsafe { link(slot, j.body(1).unwrap()); }
         assert_eq!(unsafe { run(from, &mut cpu, &mut bus, &mem, 0, 1, false) }.0, 1);
         assert_eq!(cpu.regs[0], 0);
         assert_eq!(unsafe { run(from, &mut cpu, &mut bus, &mem, 0, 10, false) }.0, 2);
@@ -2255,7 +2352,7 @@ mod tests {
         hot(&mut j, 3, 64, &[op(Fast::MovI { d: 2, v: 5 }), careful], &mem);
         for (code, id) in [(from, 1), (from2, 3)] {
             let (_, slot, _) = unsafe { run(code, &mut cpu, &mut bus, &mem, 0, 100, false) };
-            unsafe { *slot = j.body(id).unwrap() as u64; }
+            unsafe { link(slot, j.body(id).unwrap()); }
         }
         let mut go = |code, stop_pc, stop_io, cap| {
             cpu.regs = [0; 16]; cpu.stop_pc = stop_pc; cpu.stop_io = stop_io;
@@ -2360,7 +2457,7 @@ mod tests {
                 cases.push(Fast::DecBr { r: 3, cond, v: 5, target: 0x40 });
             }
         }
-        for fop in [0u8, 1, 2, 3, 5, 6, 7, 8, 0x1f, 0x5f, 0x8f, 0x9f] { // (the ops fm1-isa decodes)
+        for fop in [0u8, 1, 2, 3, 5, 6, 7, 8, 0x0f, 0x1f, 0x2f, 0x3f, 0x4f, 0x5f, 0x6f, 0x7f, 0x8f, 0x9f, 0xcf, 0xdf, 0xef, 0xff] { // (the ops fm1-isa decodes)
             cases.push(Fast::FOp { d: 0, a: 1, b: 2, op: fop });
             cases.push(Fast::FOp { d: 0, a: 1, b: 1, op: fop });
         }
@@ -2414,6 +2511,8 @@ mod tests {
             Fast::PopRets, Fast::PushRet, Fast::PopRet,
             Fast::CallR { r: 1 }, Fast::CallR { r: 8 }, Fast::GotoR { r: 2 }, Fast::GotoR { r: 9 },
             Fast::SetIe { on: false }, Fast::SetIe { on: true }, Fast::IcfgRd { d: 3 }, Fast::IcfgWr { s: 4 }]);
+        // (route 22: rev8, rev16, revs inline, popcnt through the executor; into another and the same register)
+        for form in 0..4u32 { for d in [0u32, 1] { cases.push(Fast::Raw { route: 22, raw: d << 28 | 1 << 24 | form << 22 | 0xe070 }); } }
         let mut jit = Jit::new(false).unwrap();
         for (j, mut fast) in cases.into_iter().enumerate() {
             for round in 0..24 {

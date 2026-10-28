@@ -35,6 +35,7 @@ pub mod periph;
 mod ram;
 pub mod smk;
 mod spiflash;
+pub mod usb;
 
 pub use lcd::{write_bmp, Lcd};
 pub use periph::{Action, Periph, CPU_HZ, VEC_BASE};
@@ -138,6 +139,9 @@ static SFR_MAP: [Region; ((SFR_HI - SFR_LO) / 8) as usize] = {
 #[derive(Default)]
 pub struct AddrHasher(u64);
 
+/// SFR words at aligned addresses below this live in `Soc::sfr_lo`.
+const SFR_LO_END: u32 = 0x6_0000;
+
 impl std::hash::Hasher for AddrHasher {
     fn finish(&self) -> u64 {
         self.0
@@ -195,6 +199,9 @@ pub struct Soc {
     pub ticks: u64,
     /// Timers, audio DMA, ADC, interrupt controller and the front panel.
     pub periph: Periph,
+    /// Plain SFR words: the aligned ones below `SFR_LO_END` in an array (the GPIO and clock
+    /// windows, written at every port write), the rest in the map.
+    sfr_lo: Vec<u32>,
     sfr: std::collections::HashMap<u32, u32, std::hash::BuildHasherDefault<AddrHasher>>,
     /// Core 0 / 1 paused by the other (C0_CON / C1_CON bit 2 pulses, bit 3 resumes).
     paused: [bool; 2],
@@ -236,8 +243,27 @@ pub struct Soc {
     pub flaky_core1: Option<flaky::FlakyCore1>,
     /// The power domain's analog registers.
     pub p33: p33::P33,
+    /// USB0 and, with a cable (`usb_plug`), a host on the other end (usb.rs).
+    pub usb: usb::Usb,
     /// Exact skipping of cpu0's polling loops (`machine::run_blocks`).
     pub loop_skip: machine::LoopSkip,
+    /// Chip resets so far (the watchdog's, PR_PWR's: p33.rs), and the cause of one to come
+    /// (`RST_SRC`'s bit), which `machine::run_blocks` carries out.
+    pub resets: u32,
+    reset_req: Option<u8>,
+    /// How the loader left the chip, taken as cpu0 starts: what a reset goes back to.
+    boot: Option<Box<Boot>>,
+}
+
+/// The chip as the loader hands it to the app (`Soc::chip_reset`).
+struct Boot {
+    cpu: fm1_core::PlainState,
+    sfr_lo: Vec<u32>,
+    sfr: std::collections::HashMap<u32, u32, std::hash::BuildHasherDefault<AddrHasher>>,
+    sfc: (u32, (u32, u32)),
+    bt_window: u32,
+    /// The SPL's boot parameters (r0 into RAM, `write_boot_info`): where, and the bytes.
+    info: Option<(u32, Vec<u8>)>,
 }
 
 fn dbg_line(addr: u32) -> &'static str {
@@ -317,7 +343,7 @@ impl Soc {
     }
 
     /// A package boot: the chip key, and SFCENC as the loader leaves it for the installed
-    /// package (decrypted up to flash `app_end`, the app area's end, and as stored above:
+    /// package (decrypted up to flash `app_end`, the protected image's end, and as stored above:
     /// CON 3, UNENC_L there, UNENC_H 0x07FFFFFF). The firmware's own window replaces it
     /// (Felucca's fm1_flash.h: CON &= ~2, UNENC_L / _H, CON |= 2; stock 0x93000, FM1 Open
     /// 0x73000, April OS 0x64000); a `--flash` file restored after this reads the same way.
@@ -360,6 +386,7 @@ impl Soc {
             console: Vec::new(),
             ticks: 0,
             periph: Periph::default(),
+            sfr_lo: vec![0; (SFR_LO_END / 4) as usize],
             sfr: Default::default(),
             paused: [false; 2],
             lock_owner: None,
@@ -377,8 +404,105 @@ impl Soc {
             unknown_log: Vec::new(),
             flaky_core1: None,
             p33: Default::default(),
+            usb: Default::default(),
             // (FM1_TRACE: a trace shows every instruction as it runs, not a probe's)
             loop_skip: machine::LoopSkip::new(std::env::var_os("FM1_NO_LOOPSKIP").is_none() && std::env::var_os("FM1_TRACE").is_none()),
+            resets: 0,
+            reset_req: None,
+            boot: None,
+        }
+    }
+
+    /// cpu0 starts (the runners call this before its first instruction): the chip as it is now
+    /// is what a reset goes back to. A cpu0 that has already run is not at its start: nothing is
+    /// taken, and a reset is then not carried out (`chip_reset`).
+    pub fn take_boot(&mut self, cpu: &fm1_core::Cpu) {
+        if self.boot.is_some() || cpu.insn_count != 0 {
+            return;
+        }
+        // (a cpu that has not run has nothing in flight)
+        let Some(state) = cpu.plain_state() else { return };
+        const INFO: u32 = 24 + 32; // (write_boot_info's block)
+        let r0 = cpu.regs[0];
+        let info = r0.checked_sub(RAM_BASE).filter(|&o| (o + INFO) as usize <= self.ram.len()).map(|_| {
+            (r0, (0..INFO).map(|i| self.ram.read8(r0 - RAM_BASE + i)).collect())
+        });
+        self.boot = Some(Box::new(Boot { cpu: state, sfr_lo: self.sfr_lo.clone(), sfr: self.sfr.clone(), sfc: (self.sfc_con, self.sfc_unenc), bt_window: self.bt_window, info }));
+    }
+
+    /// Is a chip reset due (the watchdog ran out, or the firmware asked through PR_PWR)?
+    #[inline]
+    pub fn reset_due(&self) -> bool {
+        self.reset_req.is_some()
+    }
+
+    /// The reset that is due: cpu0 back where the loader started it, the chip's registers as
+    /// the loader left them, core 1 held (the runner drops it: `resets` counts up), the boot
+    /// parameters written again, the cause in P33's `RST_SRC`. What is not the chip's stays:
+    /// RAM (a word a firmware leaves itself there, Felucca's "usb_update_mode" mailbox), the
+    /// flash, the screen, and what `Periph::chip_reset` keeps.
+    pub fn chip_reset(&mut self, cpu: &mut fm1_core::Cpu) {
+        let Some(cause) = self.reset_req.take() else { return };
+        let Some(boot) = self.boot.take() else {
+            // (half a reset, the peripherals' without cpu0's, would be worse than none)
+            eprintln!("chip reset not carried out: the emulator did not see cpu0 start");
+            return;
+        };
+        if std::env::var_os("FM1_DUAL_TRACE").is_some() || std::env::var_os("FM1_RESET_TRACE").is_some() {
+            eprintln!("chip reset at {} ms ({})", self.periph.ms(), if cause == p33::P33::RST_WDT { "watchdog" } else { "PR_PWR" });
+        }
+        self.resets += 1;
+        self.periph.chip_reset();
+        self.p33.chip_reset(cause);
+        let cable = self.usb.cable;
+        self.usb = Default::default();
+        if cable {
+            self.usb.plug(self.periph.hz);
+        }
+        (self.paused, self.lock_owner, self.cpu1_release, self.cpu1_released_once, self.crc) = ([false; 2], None, false, false, 0);
+        self.flash.chip_reset();
+        cpu.set_plain_state(&boot.cpu);
+        self.sfr_lo.clone_from(&boot.sfr_lo);
+        self.sfr = boot.sfr.clone();
+        (self.sfc_con, self.sfc_unenc, self.bt_window) = (boot.sfc.0, boot.sfc.1, boot.bt_window);
+        if let Some((at, bytes)) = boot.info.clone() {
+            for (i, b) in bytes.into_iter().enumerate() {
+                self.write8(at + i as u32, b);
+            }
+        }
+        self.sfc_reread();
+        self.loop_skip.next_try = 0;
+        self.boot = Some(boot);
+    }
+
+    /// A P33 access done: what it asks of the chip (p33.rs). The watchdog starts its count
+    /// when it is switched on or fed, and stops when it is switched off.
+    fn p33_event(&mut self) {
+        match self.p33.take_event() {
+            Some(p33::Event::Wdt { fed }) => {
+                let con = self.p33.reg(p33::P33::WDT_CON, false);
+                let pd = &mut self.periph;
+                let before = pd.wdt_at;
+                if con & 0x10 == 0 {
+                    pd.wdt_at = u64::MAX;
+                } else if fed || pd.wdt_at == u64::MAX {
+                    pd.wdt_at = pd.cycles + pd.cycle_of_ms(p33::P33::wdt_ms(con)).max(1);
+                }
+                if pd.wdt_at < before {
+                    // sooner than anything the run loop planned for (switched on, or a shorter
+                    // period fed): compiled code leaves at this write, the loop looks again
+                    pd.next_due = 0;
+                } else {
+                    // (a feed moves the deadline later: nothing comes due sooner, and a polling
+                    // loop that feeds it each round can still be skipped)
+                    pd.next_due = pd.next_due.min(pd.wdt_at);
+                }
+            }
+            Some(p33::Event::Reset) => {
+                self.reset_req.get_or_insert(p33::P33::RST_SOFT);
+                self.periph.next_due = 0;
+            }
+            None => {}
         }
     }
 
@@ -389,7 +513,8 @@ impl Soc {
         let fm1 = self.board == Board::Fm1;
         match self.region(addr) {
             Region::Xip | Region::XipFlash | Region::Ram | Region::Ovl | Region::Sram2 => true,
-            Region::Irqc | Region::Iomap | Region::Usb | Region::Clk | Region::Ana | Region::Bt | Region::Dbg => true,
+            Region::Usb => self.usb.pure(addr),
+            Region::Irqc | Region::Iomap | Region::Clk | Region::Ana | Region::Bt | Region::Dbg => true,
             Region::Spi2 | Region::Crc | Region::P33 | Region::Alnk | Region::Uart1 | Region::Sfcenc => true,
             // the tick counter's word counts the clock
             Region::Irqc2 => addr != 0x1eef0f0,
@@ -452,8 +577,17 @@ impl Soc {
     /// bits — Felucca writes Q15 << 7, audio.c OUT_SHIFT — so >> 8 to i16).
     pub fn advance(&mut self, n: u64) {
         let due = self.periph.advance(n);
+        if due.wdt {
+            self.reset_req.get_or_insert(p33::P33::RST_WDT);
+        }
         if let Some((at, b)) = due.uart_rx {
             self.write8(at, b);
+        }
+        if due.usb_frame {
+            let pullup = self.sfr_get(usb::USB_IO_CON0) & 0x40 != 0;
+            let mut u = std::mem::take(&mut self.usb);
+            u.frame(self, pullup);
+            self.usb = u;
         }
         if let Some((adr, words)) = due.audio_half {
             if self.audio_trace {
@@ -464,6 +598,14 @@ impl Soc {
                 self.periph.audio.push((w >> 8).clamp(-32768, 32767) as i16);
             }
         }
+    }
+
+    /// A USB cable to a host (usb.rs): the SIE answers, and a frame every millisecond.
+    pub fn usb_plug(&mut self) {
+        self.usb.plug(self.periph.hz);
+        self.periph.usb_period = (self.periph.hz / 1000).max(1);
+        self.periph.usb_next = self.periph.cycles + self.periph.usb_period;
+        self.periph.next_due = 0;
     }
 
     /// The highest-priority enabled pending interrupt: (irq, prio).
@@ -542,10 +684,17 @@ impl Soc {
     }
 
     fn sfr_get(&mut self, addr: u32) -> u32 {
+        if addr < SFR_LO_END && addr & 3 == 0 {
+            return self.sfr_lo[(addr >> 2) as usize];
+        }
         *self.sfr.get(&addr).unwrap_or(&0)
     }
 
     fn sfr_set(&mut self, addr: u32, v: u32) {
+        if addr < SFR_LO_END && addr & 3 == 0 {
+            self.sfr_lo[(addr >> 2) as usize] = v;
+            return;
+        }
         self.sfr.insert(addr, v);
     }
 
@@ -635,16 +784,18 @@ impl Soc {
         self.periph.spi2_start(bytes, baud, con & 0x2000 != 0);
     }
 
-    /// A SPI1 transfer finished (instantly here): with CON bit 13 (interrupt enable) that is
-    /// IRQ 16, the stock LCD driver's DMA-done (its layer flush waits for the handler).
-    /// (SMK-37: it takes the bytes' time on the wire, see `Periph::spi1_start`.)
+    /// A SPI1 transfer finished: with CON bit 13 (interrupt enable) that is IRQ 16, the stock
+    /// LCD driver's DMA-done (its layer flush waits for the handler). The interrupt comes after
+    /// the bytes' time on the wire (`Periph::spi1_start`): FM-1 V16's driver enables it, starts
+    /// the DMA and only then marks the DMA as running, so an interrupt at the start found its
+    /// handler idle, which returned without clearing it, again and again. On the FM-1 the
+    /// transfer-done bit still reads as set at once (polls finish); the SMK-37's is busy until the
+    /// bytes have gone out.
     fn spi1_done(&mut self, bytes: u32) {
         let irq = self.sfr_get(0x11d00) & 0x2000 != 0;
-        if self.board == Board::Smk37 {
+        if self.board == Board::Smk37 || irq {
             let baud = self.sfr_get(0x11d04);
             self.periph.spi1_start(bytes, baud, irq);
-        } else if irq {
-            self.periph.spi1_pending = true;
         }
     }
 
@@ -674,6 +825,9 @@ impl Bus for Soc {
         if self.periph.any_pending() {
             self.periph.next_due = 0;
         }
+    }
+    fn service(&mut self) {
+        self.periph.next_due = 0;
     }
 
     fn idle(&mut self, core: u32) {
@@ -829,6 +983,7 @@ impl Soc {
                     _ => v,
                 }
             }
+            Region::Usb if (usb::USB_LO..=usb::USB_HI).contains(&addr) => self.usb.read(addr, self.periph.cycles),
             // (the second USB PHY ready: bit 4 of its control word, once it is powered up)
             Region::Usb if addr == 0x16800 => self.sfr_get(addr) | 0x10,
             Region::Iomap | Region::Usb | Region::Clk => self.sfr_get(addr),
@@ -972,7 +1127,10 @@ impl Soc {
             }
             Region::Iomap => self.sfr_set(addr, value),
             Region::Ana => self.sfr_set(addr, value),
-            Region::P33 => self.p33.write(addr, value),
+            Region::P33 => {
+                self.p33.write(addr, value);
+                self.p33_event();
+            }
             Region::Bt => {
                 if addr == 0x2fc44 {
                     self.bt_window = value;
@@ -988,6 +1146,7 @@ impl Soc {
                 }
                 self.sfr_set(addr, value)
             }
+            Region::Usb if (usb::USB_LO..=usb::USB_HI).contains(&addr) => self.usb.write(addr, value, self.periph.cycles),
             Region::Usb => {
                 if addr == 0x16a0c && self.board == Board::Smk37 {
                     self.periph.smk.commons = value;
@@ -1063,7 +1222,8 @@ pub struct Stock {
     pub identity: String,
     /// The chip key the package's app area is scrambled with.
     pub key: u16,
-    /// The app area's end in flash: decrypted up to here as installed (`Soc::sfc_boot`).
+    /// The protected image's end in flash (`fwsc::Unpacked::end`): decrypted up to here as
+    /// installed (`Soc::sfc_boot`).
     pub app_end: usize,
     /// FM-1 user bank, if this package has one.
     pub usr: Option<usize>,
@@ -1085,7 +1245,7 @@ pub fn stock_from_package(pkg: &[u8], syx: Option<&[u8]>) -> Result<Stock, Strin
     }
     let app = u.entry("app.bin").map(|h| h.offset).unwrap_or(0x120);
     let usr = fwsc::usr_offset(&u).filter(|_| board == Board::Fm1);
-    Ok(Stock { xip: u.xip, flash, entry: XIP_BASE + app as u32, board, identity: u.identity, key: u.key, app_end: u.area + u.size, usr })
+    Ok(Stock { xip: u.xip, flash, entry: XIP_BASE + app as u32, board, identity: u.identity, key: u.key, app_end: u.end, usr })
 }
 
 /// Ready a Soc for a package's firmware: its board, its flash chip, and the SPL's boot
@@ -1273,5 +1433,14 @@ mod tests {
         assert_eq!(soc.read32(0x0207_1000), 0xaaaa_aaaa, "the erase after the cut never happened");
         assert_eq!(soc.flash.ops, 3);
         assert!(soc.flash.cut());
+    }
+}
+
+impl usb::Dma for Soc {
+    fn dma_read8(&mut self, addr: u32) -> u8 {
+        self.read8(addr)
+    }
+    fn dma_write8(&mut self, addr: u32, v: u8) {
+        self.write8(addr, v)
     }
 }
