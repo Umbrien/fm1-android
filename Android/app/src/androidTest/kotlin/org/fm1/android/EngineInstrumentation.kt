@@ -352,15 +352,20 @@ class EngineInstrumentation : Instrumentation() {
             val imported = ProjectSnapshot.fromEnvelope(backup, "test.fm1backup")
             require(fingerprint(imported) == originalHash, "backup envelope changed parts")
             val legacy = JSONObject(String(backup, Charsets.UTF_8))
-            legacy.getJSONObject("snapshot").put("packageSHA256", "7c9d269d15d1c1a48e0ebada7ffa2c2aa196c19d51056fd3f760d322322b335f")
-            val legacySnapshot = ProjectSnapshot.fromEnvelope(legacy.toString().toByteArray(Charsets.UTF_8), "legacy.fm1backup")
-            val legacyCandidate = legacySnapshot.create(bytes)
-            try {
-                val upgraded = ProjectSnapshot.capture(legacyCandidate, 716)
-                for ((name, data) in original.parts) if (name != "flash") require(
-                    data.contentEquals(upgraded.parts[name]), "legacy workspace changed $name",
-                )
-            } finally { NativeEngine.destroy(legacyCandidate) }
+            for (previousPackage in listOf(
+                "7c9d269d15d1c1a48e0ebada7ffa2c2aa196c19d51056fd3f760d322322b335f",
+                "fb69b4311790eb7ec09498be16ae2b71bd681840e221c0d8cfdb26fb5f9a2928",
+            )) {
+                legacy.getJSONObject("snapshot").put("packageSHA256", previousPackage)
+                val legacySnapshot = ProjectSnapshot.fromEnvelope(legacy.toString().toByteArray(Charsets.UTF_8), "legacy.fm1backup")
+                val legacyCandidate = legacySnapshot.create(bytes)
+                try {
+                    val upgraded = ProjectSnapshot.capture(legacyCandidate, 716)
+                    for ((name, data) in original.parts) if (name != "flash") require(
+                        data.contentEquals(upgraded.parts[name]), "legacy workspace changed $name",
+                    )
+                } finally { NativeEngine.destroy(legacyCandidate) }
+            }
             legacy.getJSONObject("snapshot").put("packageSHA256", "0".repeat(64))
             var wrongReleaseRejected = false
             try { ProjectSnapshot.fromEnvelope(legacy.toString().toByteArray(Charsets.UTF_8), "wrong.fm1backup") }

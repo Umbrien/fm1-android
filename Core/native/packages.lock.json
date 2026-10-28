@@ -4,24 +4,24 @@
     {
       "id": "sloop",
       "name": "SLOOP",
-      "version": "2.8",
-      "source": "https://github.com/isod89/sloop-fm1/tree/v2.8",
-      "url": "https://thefirmwarehub.com/fw/sloop-2.8.fwsc",
-      "size": 610035,
-      "sha256": "fb69b4311790eb7ec09498be16ae2b71bd681840e221c0d8cfdb26fb5f9a2928",
+      "version": "2.8.3",
+      "source": "https://github.com/isod89/sloop-fm1/tree/v2.8.3",
+      "url": "https://github.com/isod89/sloop-fm1/releases/download/v2.8.3/sloop-2.8.3.fwsc",
+      "size": 610052,
+      "sha256": "5444afd3c69c409352e1aed35a56205f13f11e60790de146593c4618a43f3528",
       "kind": 2,
-      "path": "Research/NativeSloop/upstream-sloop-2.8/docs/firmware/sloop-2.8.fwsc"
+      "path": "Research/NativeSloop/upstream-sloop-2.8/docs/firmware/sloop-2.8.3.fwsc"
     },
     {
       "id": "felucca",
       "name": "Felucca",
-      "version": "1.6.1",
-      "source": "https://github.com/hugelton/Felucca/tree/v1.6.1",
-      "url": "https://github.com/hugelton/Felucca/releases/download/v1.6.1/felucca-1.6.1.fwsc",
-      "size": 610090,
-      "sha256": "dff3a38f7e5b9833e15aba322558c9485e9e422e3ff813c616c91b3584a2d909",
+      "version": "1.7.0",
+      "source": "https://github.com/hugelton/Felucca/tree/v1.7.0",
+      "url": "https://github.com/hugelton/Felucca/releases/download/v1.7.0/felucca-1.7.0.fwsc",
+      "size": 610286,
+      "sha256": "bff7c617cfb2c88e66b22aa691cb798dfa0d9cb12ff9a73deab51d404e82817c",
       "kind": 3,
-      "path": "Research/NativeFamily/felucca-1.6.1.fwsc"
+      "path": "Research/NativeFamily/felucca-1.7.0.fwsc"
     },
     {
       "id": "x0x",
@@ -37,35 +37,35 @@
     {
       "id": "melodee",
       "name": "Melodee",
-      "version": "1.4.3",
-      "source": "https://github.com/keremimo/melodee/tree/v1.4.3",
-      "url": "https://github.com/keremimo/melodee/releases/download/v1.4.3/melodee-1.4.3.fwsc",
-      "size": 610534,
-      "sha256": "efa44743be492278e25261f012b02425f373b8f31e9e396ef5e47b240a79be80",
+      "version": "1.6.0-rc.5",
+      "source": "https://github.com/keremimo/melodee/tree/v1.6.0-rc.5",
+      "url": "https://github.com/keremimo/melodee/releases/download/v1.6.0-rc.5/melodee-1.6.0-rc.5.fwsc",
+      "size": 610583,
+      "sha256": "11689c41e5d9e21b3f207e1cf0192fbe037a10086e94b0b8e61ad21eab948879",
       "kind": 5,
-      "path": "Research/NativeFamily/melodee-1.4.3.fwsc"
+      "path": "Research/NativeFamily/melodee-1.6.0-rc.5.fwsc"
     },
     {
       "id": "official-open",
       "name": "FM1 Open",
-      "version": "V13",
-      "source": "https://github.com/m-vave/fm1_open/tree/b178ac43c25f010c60a878056fb5331fe693fd62",
-      "url": "https://open.m-vave.com/assets/fm1/c35330f1cad641f38908a6269c7316fdaf4ffb8b1091a7b3282fa31b9be9fe74.bin",
-      "size": 479796,
-      "sha256": "c35330f1cad641f38908a6269c7316fdaf4ffb8b1091a7b3282fa31b9be9fe74",
+      "version": "V14",
+      "source": "https://github.com/m-vave/fm1_open/tree/V14",
+      "url": "https://open.m-vave.com/assets/fm1/7e7b6d260163cdf9d716f7fab44f19be600edeffcd390de74370b83c917fd0c6.bin",
+      "size": 492084,
+      "sha256": "7e7b6d260163cdf9d716f7fab44f19be600edeffcd390de74370b83c917fd0c6",
       "kind": 6,
-      "path": "Research/NativeOfficial/FM1-Open-V13.fwsc"
+      "path": "Research/NativeOfficial/FM1-Open-V14.fwsc"
     },
     {
       "id": "skiff",
       "name": "Skiff",
-      "version": "1.4",
-      "source": "https://github.com/illuminus5/skiff/tree/v1.4",
-      "url": "https://github.com/illuminus5/skiff/releases/download/v1.4/skiff-1.4.fwsc",
-      "size": 610337,
-      "sha256": "0622a752e8304777c042ccea0732ba023e1413baa6dbc8724576e2ec76de02e0",
+      "version": "2.0.2",
+      "source": "https://github.com/illuminus5/skiff/tree/v2.0.2",
+      "url": "https://github.com/illuminus5/skiff/releases/download/v2.0.2/skiff-2.0.2.fwsc",
+      "size": 610429,
+      "sha256": "e3592e5ce04823df8ac72b90f69c3a4d575cb13449cc3bb9e845cf1bfa3d546a",
       "kind": 7,
-      "path": "Research/NativeSkiff/skiff-1.4.fwsc"
+      "path": "Research/NativeSkiff/skiff-2.0.2.fwsc"
     },
     {
       "id": "fomni",
@@ -92,13 +92,13 @@
     {
       "id": "clipper",
       "name": "Clipper",
-      "version": "1.1-experimental",
-      "source": "https://github.com/isod89/clipper-fm1/tree/v1.1-experimental",
-      "url": "https://isod89.github.io/clipper-fm1/firmware/clipper-1.1-experimental.fwsc",
-      "size": 610055,
-      "sha256": "3a23a37c431c813bcdf97321f49722c7328d1f9134ba469ff3ba194ad9f05206",
+      "version": "1.2",
+      "source": "https://github.com/isod89/clipper-fm1/tree/v1.2",
+      "url": "https://github.com/isod89/clipper-fm1/releases/download/v1.2/clipper-1.2.fwsc",
+      "size": 610072,
+      "sha256": "9a24d5dd20a5bff863709d328f2c277fa710dd317c897bcc0e840c5d3040a2e6",
       "kind": 10,
-      "path": "Research/NativeClipper/clipper-1.1-experimental.fwsc"
+      "path": "Research/NativeClipper/clipper-1.2.fwsc"
     },
     {
       "id": "stock",
@@ -125,35 +125,35 @@
     {
       "id": "choralroot",
       "name": "ChoralRoot",
-      "version": "0.26.1",
-      "source": "https://github.com/Quixotic7/ChoralRootFM1/tree/v0.26.1",
-      "url": "https://github.com/Quixotic7/ChoralRootFM1/releases/download/v0.26.1/choralroot-0.26.1.fwsc",
+      "version": "0.27",
+      "source": "https://github.com/Quixotic7/ChoralRootFM1/tree/v0.27",
+      "url": "https://github.com/Quixotic7/ChoralRootFM1/releases/download/v0.27/choralroot-0.27.fwsc",
       "size": 610313,
-      "sha256": "f118c4e7efc500d7dcf69df1685960b417870865c9a327aed9ec5443eeae8db1",
+      "sha256": "a09f9e19b66a91351de37c532e0d15cdc03ff9e9c82a0b152cdb66ca3fdc0326",
       "kind": 14,
-      "path": "Research/ChoralRoot/choralroot-0.26.1.fwsc"
+      "path": "Research/ChoralRoot/choralroot-0.27.fwsc"
     },
     {
       "id": "ghoulbox",
       "name": "GHOULBOX",
-      "version": "2.3.2",
-      "source": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/tree/ghoulbox-v2.3.2",
-      "url": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/releases/download/ghoulbox-v2.3.2/ghoulbox-2.3.2.fwsc",
+      "version": "2.4",
+      "source": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/tree/ghoulbox-v2.4",
+      "url": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/releases/download/ghoulbox-v2.4/ghoulbox-2.4.fwsc",
       "size": 610086,
-      "sha256": "069f6d783db1e05776a89006ecba07a0abfcd2cc7a0fe6fa64db096b5ecad4c8",
+      "sha256": "92630ae278d4a0b4233ff2512b62ad9b5dbe976a4c9083046222d9293a8df749",
       "kind": 15,
-      "path": "Research/Ghoulbox/ghoulbox-2.3.2.fwsc"
+      "path": "Research/Ghoulbox/ghoulbox-2.4.fwsc"
     },
     {
       "id": "jiant",
       "name": "JIANT",
-      "version": "0.9.9",
-      "source": "https://github.com/juanjiant-bit/JIANT/tree/6968b20ed195c284a2523138d16f59ee06477490",
-      "url": "https://juanjiant-bit.github.io/JIANT/firmware/felucca-v0.9.9-6968b20.fwsc",
-      "size": 610089,
-      "sha256": "2e35791d0839388a1f6ade64bfab20ff83a10d1b1af22e1a378c1bba92848023",
+      "version": "0.9.9-par12",
+      "source": "https://github.com/juanjiant-bit/JIANT/tree/527c7e462a1542cbbde2c2cbf6b4bf151954127d",
+      "url": "https://juanjiant-bit.github.io/JIANT/firmware/felucca-v0.9.9-par12-527c7e4.fwsc",
+      "size": 610280,
+      "sha256": "9738f473f8b5bed4ba6aafb6132f520d03e09683521a32090701fbf4eb6abb3c",
       "kind": 16,
-      "path": "Research/Jiant/jiant-0.9.9.fwsc"
+      "path": "Research/Jiant/jiant-0.9.9-par12.fwsc"
     }
   ]
 }

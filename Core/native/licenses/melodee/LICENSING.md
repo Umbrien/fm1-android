@@ -22,7 +22,7 @@ Every file in this tree that carries an `SPDX-License-Identifier: GPL-3.0-only` 
 
 - the firmware: `firmware/` (app, HAL, update loader)
 - the build script and tools: `build.sh`, `tools/`
-- the web pages (installer, editor) and their tests: `web/` (not the Fukiai font, below)
+- the web pages (installer, editor) and their tests: `web/` (apart from the MPL installer ports and Fukiai font below)
 - the host tests: `tests/`
 
 Three source files are ports and keep the licence of their originals: `firmware/src/phys_dsp.c`
@@ -51,6 +51,9 @@ Melodee's additions and modifications are credited separately in the source file
 
 | What | Licence | Where |
 | --- | --- | --- |
+| SLOOP master punch, stereo reverb/freeze and pedal-effect adaptations by isod89, from `isod89/sloop-fm1` at `4ec1ac829fd2bdf2c571ea215fb3d62477d01220`. Retained Felucca filters, input diffusers and insert portions keep Leo Kuroshita / Hügelton Instruments' notices; Melodee's integration retains its own credit. | GPL-3.0-only | `firmware/src/punch.c`, `fx_sloop_reverb.h`, `fx_sloop_insert.h`; source history and attribution in `docs/SLOOP_PUNCH_FX.md` |
+| Saadet installer protections and presentation, from `keremimo/saadet` at `f358c01` (introduced in `036b97e`): worker timers, tab/wake locks, timestamped MIDI responses, progress accounting, simulated FM-1 and styles. Original notices identify Kerem Kilic and the retained Charles Vestal / Leo Kuroshita portions. Melodee's session controller and integration are new GPL-3.0-only code. | MPL-2.0 for the ported files | `web/install/keepalive.js`, `transfer.js`, `progress.js`, `fakefm1.js`, `installer.css`, `installer.js`, the MPL portions of `web/index_pkg.html`; `LICENSES/MPL-2.0.txt` |
+| m-bootloader v1.2 by Julius Vitkauskas, source `22e2559906f9fc4e077f2d6aee20bf332300439e`: unmodified FM-1 release assets, offered separately and optionally by the web installer. | MIT | `web/m-bootloader/`, `LICENSES/MIT-m-bootloader.txt`; the full notice is published beside the bootloader |
 | ChoralRoot FM-1 contributors (<https://github.com/Quixotic7/ChoralRootFM1>, v0.16, commit `9c7445cdd7b767c779741d28654fb59cca3acd97`): boot stub, interrupted-update write ordering, commit-marker/CRC compensation, and recovery tests, adapted for Melodee. The shared `CRSTUB` / `CRBM` format is retained. | GPL-3.0-only | `firmware/stub/`, `firmware/loader/ldr_core.c`, `tools/build.py`, `tools/fm1pkg_make.py`, `tests/boot_stub*`, `tests/loader_powercut_test.c` |
 | Rubik font by The Rubik Project Authors (<https://github.com/googlefonts/rubik>): the UI text and the keycap labels, rasterised into the firmware at build time (`tools/gen_aa_font.py`, `tools/gen_aa_keycaps.py`; the generated tables are not offered as a font, and the font declares no Reserved Font Name) | SIL OFL 1.1 | `assets/fonts/Rubik[wght].ttf`, `LICENSES/OFL-Rubik.txt` |
 | Inter Tight font by The Inter Project Authors: the panel diagram (`tools/gen_panel_diagram.py`, `docs/panel.jpg`) and the `inter-tight` preset of `tools/gen_aa_font.py` (the firmware's text was Inter Tight up to Melodee 0.13) | SIL OFL 1.1 | `assets/fonts/InterTight[wght].ttf`, `LICENSES/OFL-InterTight.txt` (also `assets/fonts/OFL.txt`) |
@@ -63,6 +66,7 @@ Melodee's additions and modifications are credited separately in the source file
 | Sequential Prophet-5/10 factory programs v1.03 (Sequential, 2025; <https://sequential.com/support/download/prophet-5-10-sounds/>): the 200 programs of `P5_Factory_Programs_USER_v1.03.syx`, unchanged native data, as PROPHET's factory presets and its default native user collection. Included as sound data for Prophet-5 compatibility; the rights stay with Sequential. See `assets/prophet5-factory/README.md` | Sequential's (no licence granted) | `assets/prophet5-factory/prophet5-v1.03.syx`, `tools/gen_prophet_factory.py` |
 | klattsch by Tony Gies (<https://github.com/tgies/klattsch>): design reference for the VOICE engine; no code copied. Formant data from Klatt (1980) / Hillenbrand et al. (1995) | MIT (klattsch) | credit only |
 | JieLi AC79 SDK by JieLi Technology: three external files go into every `.fwsc` package; the optional RAM recovery helper is in `assets/recovery/` | Apache-2.0 | `LICENSES/Apache-2.0.txt` |
+| JieLi AC79 SDK's radio calibration (`wl_rf_common.a`, Copyright (c) 2024-2026 Zhuhai Jieli Technology Co., Ltd.), rewritten in C by Charles Vestal for felucca-bsp: the VCO bank scan and the RX filter, TX LO and RX DC trims run when no stored calibration exists; the file's header states the changes (Apache-2.0 section 4(b)) | Apache-2.0 | `firmware/hal/fm1_rf_cal.h`, `LICENSES/Apache-2.0.txt` |
 
 On the device, HOME held > ABOUT opens the information screen; turning PRESETS scrolls on into
 CREDITS, a short list of these authors, licences and source URLs.
@@ -125,4 +129,8 @@ by those owners, nor by Hügelton Instruments.
 
 ## Radio
 
-Melodee never enables the Bluetooth / Wi-Fi radio of the hardware.
+Bluetooth MIDI uses the pinned Optimist sources and retained notices described
+in `docs/BLE_MIDI.md`. When no stored radio calibration exists, the firmware runs
+JieLi's AC79 SDK calibration rewritten in C (`firmware/hal/fm1_rf_cal.h`,
+Apache-2.0, credited above). The application does not link the SDK RF library.
+The SDK-specific proprietary binary from FM1 Open is not included.

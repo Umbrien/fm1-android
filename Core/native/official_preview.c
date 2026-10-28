@@ -1,4 +1,4 @@
-/* Native host of the exact public V13 browser sources, not the opaque device SDK. */
+/* Native host of the exact public V14 browser sources, not the opaque device SDK. */
 #include "official_preview_host.h"
 #undef malloc
 #undef calloc
@@ -28,6 +28,9 @@ void ofp_free(void *p) {
 void ofp_destroy(void) {
     while(allocations){struct allocation *node=allocations;allocations=node->next;free(node->memory);free(node);}
 }
+/* V14 declares this optional device-panel hook weak; the browser host omits it.
+ * Supply the same no-op behavior explicitly for Mach-O linkers. */
+void groove_midi_panel_reset(void) {}
 extern void sim_boot(unsigned);
 extern void sim_control(unsigned,unsigned,int);
 extern void sim_release(void);

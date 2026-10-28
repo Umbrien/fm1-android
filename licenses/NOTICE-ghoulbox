@@ -1,7 +1,7 @@
 GHOULBOX changes copyright 2026 Jason Persinger, GPL-3.0-only.
 ghoulbox: source-compiled firmware through its source-host HAL.
 Native source/resource pins: Core/native/additions.lock.json.
-Source: https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/tree/ghoulbox-v2.3.2
+Source: https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/tree/ghoulbox-v2.4
 Package identity: Core/native/packages.lock.json. Original licensing notice follows.
 
 # Felucca licensing

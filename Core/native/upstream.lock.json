@@ -3,8 +3,8 @@
   "native_api_version": 1,
   "sloop": {
     "source": "https://github.com/isod89/sloop-fm1",
-    "tag": "v2.8",
-    "commit": "b77bf55e3bf804665b8f5dffb5955bd8443311f0",
+    "tag": "v2.8.3",
+    "commit": "5eb24c1dc18261a85c193e8b28318944690e58fd",
     "generated_headers_sha256": {
       "felucca_drumkits.h": "fdbd0af52099ecfc62c1f0c94927dd469a3570355c9fec47e9d68a34444b8168",
       "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",

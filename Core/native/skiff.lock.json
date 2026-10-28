@@ -5,29 +5,32 @@
   "kind": 7,
   "prefix": "skf_",
   "source": "https://github.com/illuminus5/skiff",
-  "tag": "v1.4",
-  "commit": "c01fa1ed619266d770ea6552b153612e1b77d0a9",
+  "tag": "v2.0.2",
+  "commit": "4382e9cf5e5bfc8263ee3775c11c7f45373617a0",
   "flash_bytes": 1048576,
   "state_alignment": 16,
   "package": {
     "id": "skiff",
     "name": "Skiff",
-    "version": "1.4",
+    "version": "2.0.2",
     "author": "illuminus5",
-    "size": 610337,
-    "sha256": "0622a752e8304777c042ccea0732ba023e1413baa6dbc8724576e2ec76de02e0",
-    "url": "https://github.com/illuminus5/skiff/releases/download/v1.4/skiff-1.4.fwsc",
-    "source": "https://github.com/illuminus5/skiff/tree/v1.4"
+    "size": 610429,
+    "sha256": "e3592e5ce04823df8ac72b90f69c3a4d575cb13449cc3bb9e845cf1bfa3d546a",
+    "url": "https://github.com/illuminus5/skiff/releases/download/v2.0.2/skiff-2.0.2.fwsc",
+    "source": "https://github.com/illuminus5/skiff/tree/v2.0.2",
+    "kind": 7,
+    "path": "Research/NativeSkiff/skiff-2.0.2.fwsc"
   },
   "generated_headers_sha256": {
     "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
     "felucca_samples.h": "ff5517562c74e15ea227ab657c04a0cad5bf86df019062546948068f7e675672",
-    "felucca_tables.h": "a975289289c52b9f9fd2ff985a147b199f8a3afa9fb416e95f99cb83131993cb",
-    "ui_fonts.h": "d278e3002b34d7c112b627142ffcc984dd98d1047a5d9aa90f5abbfd491ea2d9",
+    "felucca_tables.h": "376c4213fb1f3a2bbb4f63826d0b056da11e79958a65c4ab7abed851b9db35f5",
+    "ui_fonts.h": "1f635f4767e9ab46fcbd3f5f2274613f2c1d52ad90cded862cec45d5359bfa49",
     "ui_icons.h": "a025f02c4b76260946f8406efe8696d061033f7d63fc5c9bdd9354525c35656d",
-    "ui_keycaps.h": "d07c0bb7321b207191fab8c491fb389701e38ae57ae18561f59452e9be119efd",
+    "ui_keycaps.h": "ea44eab34f6d80198d9a104be2de66620971dde0c94a986b08736c7da6923f02",
     "ui_palettes.h": "952a10ffd7a4b4a10001fa5e1f727dcdb8b20f7c149692a9131992d57c00f439",
-    "ui_pixfont.h": "a8c89ca1ae263067099d829cf0b681aedc54e4c9646c651e1d9e06927afe7886"
+    "ui_pixfont.h": "d9543f1dfc73f94fab981e5f31d198196ad846a7a84d1847893af6af965f4d97",
+    "ui_sprites.h": "321b6bee66e453651e8b8817b1cf77f11bb8a31f2393c697975848b76bd4270d"
   },
   "notices_sha256": {
     "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",

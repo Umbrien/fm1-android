@@ -1,5 +1,19 @@
 # Verification boundaries
 
+On 2026-10-28, the firmware refresh passed `scripts/prepare.py` for all fourteen
+exact packages, `cargo test -p fm1-ios-core --release` with all seven native
+source environment variables enabled (32 tests), and `Android/test.sh` on the
+arm64 Android 17 / API 37 dedicated emulator (19 checks, zero failures).
+Android coverage included all fourteen engines, binary compiler/import checks,
+SLOOP workspace/sample/loop/song operations, Material UI, Activity multitouch,
+audio/lifecycle/persistence, and factory reset/reload for every bundled engine.
+The SLOOP workspace regression accepted the previously supported 2.7.1 identity
+and the prior 2.8 identity through a disposable 2.8.3 candidate. The native
+Melodee adapter now follows 1.6.0-rc.5 voice-pool, MIDI insert and punch startup,
+and releases shared scratch each main-loop pass. FM1 Open V14 supplies its
+optional absent browser panel hook explicitly for the macOS host linker.
+External exchange fixtures and physical-device validation were not included.
+
 The original Android port was exercised on the dedicated Pixel 5 / API 33 arm64
 emulator. Eight exact compiled-native kinds booted, drew nonblank LCDs, produced
 finite nonzero note PCM, and round-tripped complete edited storage. Preview

@@ -29,17 +29,20 @@
   "firmwares": [
     {
       "id": "felucca",
-      "tag": "v1.6.1",
-      "commit": "a53ecf428c29c780108fd70a31b71a32a6b5c313",
+      "tag": "v1.7.0",
+      "commit": "d7b1b7c4099bba28854869ddb256b3d9f634cee8",
       "source": "https://github.com/hugelton/Felucca",
       "prefix": "fel_",
       "package": {
         "id": "felucca",
-        "version": "1.6.1",
-        "size": 610090,
-        "sha256": "dff3a38f7e5b9833e15aba322558c9485e9e422e3ff813c616c91b3584a2d909",
-        "url": "https://github.com/hugelton/Felucca/releases/download/v1.6.1/felucca-1.6.1.fwsc",
-        "source": "https://github.com/hugelton/Felucca/tree/v1.6.1"
+        "version": "1.7.0",
+        "size": 610286,
+        "sha256": "bff7c617cfb2c88e66b22aa691cb798dfa0d9cb12ff9a73deab51d404e82817c",
+        "url": "https://github.com/hugelton/Felucca/releases/download/v1.7.0/felucca-1.7.0.fwsc",
+        "source": "https://github.com/hugelton/Felucca/tree/v1.7.0",
+        "name": "Felucca",
+        "kind": 3,
+        "path": "Research/NativeFamily/felucca-1.7.0.fwsc"
       },
       "generated_headers_sha256": {
         "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
@@ -51,7 +54,7 @@
         "ui_palettes.h": "e87e29243c6129e8bd238cae5b185ca0357483f6a1787f78f63ecf54ce8dad05"
       },
       "submodules": {
-        "firmware/engines": "c46e0086f69bdc26df1cd144dca9e683cc4531dd"
+        "firmware/engines": "04ffe903eb87a752305d1e5b10da01b53e4ab004"
       }
     },
     {
@@ -78,26 +81,29 @@
     },
     {
       "id": "melodee",
-      "tag": "v1.4.3",
-      "commit": "ba9c812a603607012d68544b1acb6ccc8033eec5",
+      "tag": "v1.6.0-rc.5",
+      "commit": "7d2dfa33da8bc8835248be5475e890624d53802e",
       "source": "https://github.com/keremimo/melodee",
       "prefix": "mel_",
       "package": {
         "id": "melodee",
-        "version": "1.4.3",
-        "size": 610534,
-        "sha256": "efa44743be492278e25261f012b02425f373b8f31e9e396ef5e47b240a79be80",
-        "url": "https://github.com/keremimo/melodee/releases/download/v1.4.3/melodee-1.4.3.fwsc",
-        "source": "https://github.com/keremimo/melodee/tree/v1.4.3"
+        "version": "1.6.0-rc.5",
+        "size": 610583,
+        "sha256": "11689c41e5d9e21b3f207e1cf0192fbe037a10086e94b0b8e61ad21eab948879",
+        "url": "https://github.com/keremimo/melodee/releases/download/v1.6.0-rc.5/melodee-1.6.0-rc.5.fwsc",
+        "source": "https://github.com/keremimo/melodee/tree/v1.6.0-rc.5",
+        "name": "Melodee",
+        "kind": 5,
+        "path": "Research/NativeFamily/melodee-1.6.0-rc.5.fwsc"
       },
       "generated_headers_sha256": {
-        "melodee_cz1.h": "e8720f8911c3f8f8a9c9a243baac93878ae8dc598ceb6d5dae697da4e8568f43",
-        "melodee_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
-        "melodee_prophet_factory.h": "0082e7a9362aff2af69e0933cd3919a437e492eb9b2197a4abc126ae6ea57442",
-        "melodee_tables.h": "e0a1d675787fe198e8728ba738b3152d30ff579d6497a3e4a0f03558758ce64b",
-        "ui_fonts.h": "1c27f43fb3da57252fbdff6ca21b69a2aa2c5ef0f89b72afefbea2bd4a9f820b",
+        "melodee_cz1.h": "8e1b2349fdc8dbf548d5f982f9c0c2c2a10838bc7ec8de1a268cd76c11a03c9f",
+        "melodee_fm6.h": "b36c1bea6333801dfb509ed822ff2b732652dffadabca2703e15fe69b35760f4",
+        "melodee_prophet_factory.h": "e6c171a5543fd7af36cd257bad025ad09fc530e9e9235b81594d9894939a6530",
+        "melodee_tables.h": "f94a94952126a4f6fb59d126f84f3be68282305b288f3da16eeee55923c5309c",
+        "ui_fonts.h": "ce6289b884e58064463c139ec890a7542f598195b61899a7149d102823d18827",
         "ui_icons.h": "909463906790abbc526421f3c1fc9503dfb3f25d0f9f78e30d38ff80f303563b",
-        "ui_keycaps.h": "3ee8f5703b443d0d2025db53c7a6472f7d1dfb86d448b46e990de52b734ad5a1",
+        "ui_keycaps.h": "2b897e26d6803ba24b755b06fb1ede95d09f2cd58973bad6d3bd97f9037cabf0",
         "ui_palettes.h": "f4e889ee862c9c424941416c00fc7ee7b294c89e9b166bd7c1968657a6397bca",
         "x0x_drum_tables.h": "d109515a203b4c456e8e8e7378a8158d3f07580bc2bec9c17345305fd34874dc"
       }

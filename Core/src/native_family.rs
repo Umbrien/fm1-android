@@ -490,32 +490,17 @@ pub(super) fn for_package(bytes: &[u8]) -> Option<Api> {
 }
 pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
     #[cfg(fm1_native_sloop)]
-    if (len == 0 || len == 610035)
-        && digest
-            == [
-                251, 105, 180, 49, 23, 144, 235, 126, 192, 148, 152, 190, 22, 174, 43, 113, 189,
-                104, 24, 64, 226, 33, 192, 216, 207, 219, 38, 251, 95, 154, 41, 40,
-            ]
+    if (len == 0 || len == 610052) && digest == [84, 68, 175, 211, 198, 156, 64, 147, 82, 225, 174, 211, 90, 86, 32, 95, 19, 241, 30, 96, 121, 13, 225, 70, 89, 60, 70, 24, 164, 63, 53, 40]
     {
         return Some(super::native_sloop::SLOOP);
     }
     #[cfg(fm1_native_clipper)]
-    if (len == 0 || len == 610055)
-        && digest
-            == [
-                58, 35, 163, 124, 67, 28, 129, 59, 205, 249, 115, 33, 244, 151, 34, 199, 50, 141,
-                31, 145, 52, 186, 70, 159, 243, 186, 25, 74, 217, 240, 82, 6,
-            ]
+    if (len == 0 || len == 610072) && digest == [154, 36, 213, 221, 32, 165, 191, 248, 99, 112, 157, 50, 143, 44, 39, 127, 167, 16, 221, 49, 124, 137, 123, 204, 14, 132, 12, 93, 48, 64, 162, 230]
     {
         return Some(clipper::API);
     }
     #[cfg(fm1_native_family)]
-    if (len == 0 || len == 610090)
-        && digest
-            == [
-                223, 243, 163, 143, 126, 91, 152, 51, 225, 90, 186, 50, 37, 88, 201, 72, 94, 158,
-                66, 46, 63, 248, 19, 198, 22, 201, 27, 53, 132, 162, 217, 9,
-            ]
+    if (len == 0 || len == 610286) && digest == [191, 247, 198, 23, 207, 178, 200, 142, 102, 178, 42, 166, 145, 203, 121, 141, 250, 13, 156, 177, 47, 249, 167, 61, 234, 181, 29, 64, 78, 130, 129, 124]
     {
         return Some(felucca::API);
     }
@@ -530,12 +515,7 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
         return Some(x0x::API);
     }
     #[cfg(fm1_native_family)]
-    if (len == 0 || len == 610534)
-        && digest
-            == [
-                239, 164, 71, 67, 190, 73, 34, 120, 226, 82, 97, 240, 18, 176, 36, 37, 243, 115,
-                184, 243, 30, 158, 57, 110, 245, 228, 123, 36, 10, 121, 190, 128,
-            ]
+    if (len == 0 || len == 610583) && digest == [17, 104, 156, 65, 229, 217, 226, 27, 63, 32, 126, 28, 240, 25, 47, 190, 3, 122, 16, 8, 110, 148, 176, 184, 230, 26, 210, 30, 171, 148, 136, 121]
     {
         return Some(melodee::API);
     }
@@ -566,25 +546,20 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
         return Some(jangada::API);
     }
     #[cfg(fm1_native_skiff)]
-    if (len == 0 || len == 610337)
-        && digest
-            == [
-                6, 34, 167, 82, 232, 48, 71, 119, 192, 66, 204, 234, 7, 50, 186, 2, 62, 20, 19,
-                186, 166, 219, 200, 114, 69, 118, 226, 236, 118, 222, 2, 224,
-            ]
+    if (len == 0 || len == 610429) && digest == [227, 89, 46, 92, 224, 72, 35, 223, 138, 199, 43, 144, 246, 156, 58, 77, 87, 92, 177, 52, 73, 204, 59, 185, 232, 69, 207, 27, 250, 61, 84, 106]
     {
         return Some(skiff::API);
     }
     #[cfg(fm1_native_additions)]
-    if (len == 0 || len == 610313) && digest == [241, 24, 196, 231, 239, 197, 0, 215, 220, 246, 157, 241, 104, 89, 96, 180, 23, 135, 8, 101, 201, 163, 39, 174, 217, 236, 84, 67, 238, 174, 141, 177] {
+    if (len == 0 || len == 610313) && digest == [160, 159, 158, 25, 182, 106, 145, 53, 29, 227, 124, 83, 46, 13, 21, 205, 192, 63, 249, 233, 200, 42, 11, 21, 44, 219, 102, 202, 63, 220, 3, 38] {
         return Some(choralroot::API);
     }
     #[cfg(fm1_native_additions)]
-    if (len == 0 || len == 610086) && digest == [6, 159, 109, 120, 61, 177, 224, 87, 118, 168, 144, 6, 236, 186, 7, 160, 171, 252, 210, 204, 122, 15, 230, 250, 100, 219, 9, 107, 94, 202, 212, 200] {
+    if (len == 0 || len == 610086) && digest == [146, 99, 10, 226, 120, 212, 160, 180, 35, 63, 242, 81, 43, 98, 173, 155, 93, 190, 151, 106, 76, 144, 131, 4, 98, 34, 217, 41, 58, 141, 247, 73] {
         return Some(ghoulbox::API);
     }
     #[cfg(fm1_native_additions)]
-    if (len == 0 || len == 610089) && digest == [46, 53, 121, 29, 8, 57, 56, 138, 31, 106, 222, 100, 191, 171, 32, 255, 131, 161, 13, 27, 26, 242, 46, 26, 55, 140, 27, 186, 146, 132, 128, 35] {
+    if (len == 0 || len == 610280) && digest == [151, 56, 244, 115, 248, 181, 190, 212, 186, 106, 175, 182, 19, 47, 82, 13, 3, 224, 150, 131, 82, 26, 50, 9, 7, 1, 251, 244, 235, 106, 187, 60] {
         return Some(jiant::API);
     }
     None
@@ -768,9 +743,9 @@ mod tests {
             std::env::var_os("FM1_NATIVE_FAMILY").expect("configured native source root"),
         );
         let mut cases = vec![
-            (3, root.join("felucca-1.6.1.fwsc")),
+            (3, root.join("felucca-1.7.0.fwsc")),
             (4, root.join("x0x-1.1.0.fwsc")),
-            (5, root.join("melodee-1.4.3.fwsc")),
+            (5, root.join("melodee-1.6.0-rc.5.fwsc")),
         ];
         #[cfg(fm1_native_expansion)]
         {
@@ -783,15 +758,15 @@ mod tests {
         #[cfg(fm1_native_skiff)]
         {
             let extra = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_SKIFF").unwrap());
-            cases.push((7, extra.parent().unwrap().join("skiff-1.4.fwsc")));
+            cases.push((7, extra.parent().unwrap().join("skiff-2.0.2.fwsc")));
         }
         #[cfg(fm1_native_additions)]
         {
             let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
             cases.extend([
-                (14, root.join("Research/ChoralRoot/choralroot-0.26.1.fwsc")),
-                (15, root.join("Research/Ghoulbox/ghoulbox-2.3.2.fwsc")),
-                (16, root.join("Research/Jiant/jiant-0.9.9.fwsc")),
+                (14, root.join("Research/ChoralRoot/choralroot-0.27.fwsc")),
+                (15, root.join("Research/Ghoulbox/ghoulbox-2.4.fwsc")),
+                (16, root.join("Research/Jiant/jiant-0.9.9-par12.fwsc")),
             ]);
         }
         for (kind, path) in cases {
@@ -806,9 +781,6 @@ mod tests {
 }
 
 #[cfg(fm1_native_official_preview)]
-const OFFICIAL_PREVIEW_PACKAGE_SIZE: usize = 479796;
+const OFFICIAL_PREVIEW_PACKAGE_SIZE: usize = 492084;
 #[cfg(fm1_native_official_preview)]
-const OFFICIAL_PREVIEW_PACKAGE_SHA256: [u8; 32] = [
-    195, 83, 48, 241, 202, 214, 65, 243, 137, 8, 166, 38, 156, 115, 22, 253, 175, 79, 251, 139, 16,
-    145, 167, 179, 40, 47, 163, 27, 155, 233, 254, 116,
-];
+const OFFICIAL_PREVIEW_PACKAGE_SHA256: [u8; 32] = [126, 123, 109, 38, 1, 99, 205, 249, 215, 22, 247, 250, 180, 79, 25, 190, 96, 14, 222, 255, 205, 57, 13, 231, 67, 112, 184, 60, 145, 127, 208, 198];

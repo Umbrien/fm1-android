@@ -12,13 +12,13 @@ copyright/license comments and notices are retained.
 
 | Native source | Public repository | Exact commit |
 | --- | --- | --- |
-| SLOOP | https://github.com/isod89/sloop-fm1 | `b77bf55e3bf804665b8f5dffb5955bd8443311f0` |
-| Clipper | https://github.com/isod89/clipper-fm1 | `e69067211c4690f34e494b5b896e4585163dcc2b` |
-| felucca | https://github.com/hugelton/Felucca | `a53ecf428c29c780108fd70a31b71a32a6b5c313` |
+| SLOOP | https://github.com/isod89/sloop-fm1 | `5eb24c1dc18261a85c193e8b28318944690e58fd` |
+| Clipper | https://github.com/isod89/clipper-fm1 | `a160376c5ef61d6836ff570df925d12b5a66fc63` |
+| felucca | https://github.com/hugelton/Felucca | `d7b1b7c4099bba28854869ddb256b3d9f634cee8` |
 | x0x | https://github.com/charlesvestal/fm1-x0x | `27f6fac7e07ce97b5de158b45aec99f59a9e23fd` |
-| melodee | https://github.com/keremimo/melodee | `ba9c812a603607012d68544b1acb6ccc8033eec5` |
-| FM1 Open | https://github.com/m-vave/fm1_open | `b178ac43c25f010c60a878056fb5331fe693fd62` |
-| Skiff | https://github.com/illuminus5/skiff | `c01fa1ed619266d770ea6552b153612e1b77d0a9` |
+| melodee | https://github.com/keremimo/melodee | `7d2dfa33da8bc8835248be5475e890624d53802e` |
+| FM1 Open | https://github.com/m-vave/fm1_open | `4d266850f8a46bd5154a0d495c1f60317156c9f7` |
+| Skiff | https://github.com/illuminus5/skiff | `4382e9cf5e5bfc8263ee3775c11c7f45373617a0` |
 | fomni | https://github.com/charlesvestal/fm1-fomni | `6ecd227013cc18def0e89d035b3760eb268b342b` |
 | jangada | https://github.com/zednaked/jangada | `46e6c2c2ed94b609918aa6f5f7381fac915ffc45` |
 
@@ -59,8 +59,8 @@ The inspected official pages do not specify firmware redistribution terms;
 `licenses/NOTICE-fm1va` retains attribution without treating the host’s license
 as a license grant for that firmware.
 
-ChoralRoot 0.26.1 (Quixotic7 / ChoralRoot contributors, derived from Felucca)
-and GHOULBOX 2.3.2 (Jason Persinger, derived from Felucca by Leo Kuroshita /
+ChoralRoot 0.27 (Quixotic7 / ChoralRoot contributors, derived from Felucca)
+and GHOULBOX 2.4 (Jason Persinger, derived from Felucca by Leo Kuroshita /
 Hügelton Instruments) compile their actual DSP, UI and storage source for Android
 ARM64 through their source-host HALs, as native kinds 14 and 15. They use the
 shared per-instance state transformation and independent 1 MiB saves. Kind 13
@@ -69,8 +69,8 @@ and generated-header hashes are pinned in Core/native/additions.lock.json:
 
 | Source | Release | Exact commit |
 | --- | --- | --- |
-| ChoralRoot | 0.26.1 | `7d97982a7db3dad2da456a3e4d4478548b6571d9` |
-| GHOULBOX | 2.3.2 | `71ac3f87e0a33b08831f11a89fbd6012de8024ce` |
+| ChoralRoot | 0.26.1 | `070bd306ed63c7d08f09bb6ea937262b52b1a6c0` |
+| GHOULBOX | 2.3.2 | `9f2b9a22e456d7fe9552b40f7a1d0c13200913bb` |
 
 Original release package hashes select the source-native catalogue engines;
 explicitly imported binaries still use the separate binary runtime. ChoralRoot's
@@ -84,11 +84,19 @@ licensing notices and component texts are retained in licenses/.
 
 fm1-emu is pinned to `c1c045fc067da024d686e7a690806e2e55795042`;
 see `Vendor/UPSTREAM.md` for local embedding adaptations.
-JIANT 0.9.9 (kind 16) uses the published stable installer source
-`6968b20ed195c284a2523138d16f59ee06477490`, rather than the later development
+JIANT 0.9.9-par12 (kind 16) uses the published stable installer source
+`527c7e462a1542cbbde2c2cbf6b4bf151954127d`, rather than the later development
 branch. Its exact public package selects the matching source-native build.
 The upstream `web/emu/felucca_web.c` bridge supplies DSP, UI, keys and NOR storage;
 our additions builder namespaces symbols and isolates writable state per instance.
 Source, generated resources, package and component notices are pinned in the
 additions/package locks. It uses no PI32 interpreter or JIT. USB, serial, hardware
 update and device-specific behavior remain outside this host bridge.
+
+The 2026-10-28 refresh checked each bundled firmware’s upstream release or
+installer. Prereleases are included: Melodee is pinned to 1.6.0-rc.5. JIANT
+retains the Standard edition at the installer’s latest Standard build,
+0.9.9-par12 (527c7e4); the newer Sample preview is a separate edition.
+Stock V15, FM-1+VA 102, X0X 1.1.0, FoMni 0.4 and Jangada 1.0.1 remained
+current. FM1 Open V14’s browser source fingerprint matches the publisher’s
+workbench metadata; native compilation remains a portable preview.

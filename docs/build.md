@@ -125,12 +125,12 @@ python Core/native/expansion_prepare.py "$PWD/Research/NativeExpansion"
 
 Source tags are checked against exact commits; notice/input/resource hashes
 are verified. Existing checkouts are never reset. To advance a clean existing
-Skiff cache from the previous pin to v1.4, fetch and select its pinned commit
+Skiff cache from the previous pin to v2.0.2, fetch and select its pinned commit
 before running preparation (preserve any local source edits first):
 
 ```sh
-git -C Research/NativeSkiff/upstream-skiff fetch --depth 1 origin tag v1.4
-git -C Research/NativeSkiff/upstream-skiff switch --detach c01fa1ed619266d770ea6552b153612e1b77d0a9
+git -C Research/NativeSkiff/upstream-skiff fetch --depth 1 origin tag v2.0.2
+git -C Research/NativeSkiff/upstream-skiff switch --detach 4382e9cf5e5bfc8263ee3775c11c7f45373617a0
 ```
 
 Release packages require their
@@ -141,15 +141,15 @@ The ignored cache layout is:
 
 ```text
 Research/NativeSloop/upstream-sloop-2.8/
-Research/NativeClipper/{upstream-clipper,clipper-1.1-experimental.fwsc}
+Research/NativeClipper/{upstream-clipper,clipper-1.2.fwsc}
 Research/Stock/FM-1_015.fwsc
 Research/FM1VA/FM-1+VA-102.fwsc
 Research/NativeFamily/{felucca,x0x,melodee}/
-Research/NativeFamily/{felucca-1.6.1,x0x-1.1.0,melodee-1.4.3}.fwsc
+Research/NativeFamily/{felucca-1.7.0,x0x-1.1.0,melodee-1.6.0-rc.5}.fwsc
 Research/NativeOfficial/upstream-fm1-open/
-Research/NativeOfficial/FM1-Open-V13.fwsc
+Research/NativeOfficial/FM1-Open-V14.fwsc
 Research/NativeSkiff/upstream-skiff/
-Research/NativeSkiff/skiff-1.4.fwsc
+Research/NativeSkiff/skiff-2.0.2.fwsc
 Research/NativeExpansion/{fomni,jangada}/
 Research/NativeExpansion/{fomni-0.4,jangada-1.0.1}.fwsc
 ```
@@ -191,8 +191,8 @@ light/dark setting to validate both modes.
 
 The app must already be built/installed. The script wakes the dedicated emulator
 and dismisses its keyguard before injecting real touch events. Default tests need only the exact
-engine package assets already in the app and exercise sixteen core/UI cases, including
-factory reset persistence for all eleven firmware entries. The
+engine package assets already in the app and exercise nineteen core/UI cases, including
+factory reset persistence for all fourteen firmware entries. The
 receipt explicitly records that external exchange fixtures were not supplied.
 Optional cross-platform testing uses a caller-provided directory containing
 swift-generated.fm1project, swift-generated.fm1backup and ios-simulator.fm1project:
@@ -226,7 +226,7 @@ FM-1+VA host interpreter boot/sound/flash test. Its exact package is fetched by
 Compiler differential checks (Apple Silicon host, original local packages):
 
 ```sh
-FM1_COMPILER_PACKAGES="$PWD/Research/Stock/FM-1_015.fwsc:$PWD/Research/FM1VA/FM-1+VA-102.fwsc:$PWD/Research/NativeFamily/felucca-1.6.1.fwsc:$PWD/Research/NativeFamily/x0x-1.1.0.fwsc" cargo test -p fm1-ios-core --release compiler_tests -- --nocapture
+FM1_COMPILER_PACKAGES="$PWD/Research/Stock/FM-1_015.fwsc:$PWD/Research/FM1VA/FM-1+VA-102.fwsc:$PWD/Research/NativeFamily/felucca-1.7.0.fwsc:$PWD/Research/NativeFamily/x0x-1.1.0.fwsc" cargo test -p fm1-ios-core --release compiler_tests -- --nocapture
 FM1_COMPILER_ONLY=true ./Android/test.sh
 ```
 

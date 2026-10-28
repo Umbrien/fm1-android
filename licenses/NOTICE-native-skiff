@@ -1,9 +1,9 @@
-Skiff 1.4 compiled native source engine
+Skiff 2.0.2 compiled native source engine
 
 Skiff by illuminus5, based on Felucca by Leo Kuroshita (@kurogedelic),
 Hugelton Instruments. GPL-3.0-only.
 https://github.com/illuminus5/skiff
-Tag v1.4, commit c01fa1ed619266d770ea6552b153612e1b77d0a9.
+Tag v2.0.2, commit 4382e9cf5e5bfc8263ee3775c11c7f45373617a0.
 
 The original application, DSP, audio ISR, UI, project and pattern storage are
 compiled from pinned public sources. Hardware I/O is adapted from Skiff's own

@@ -1,5 +1,5 @@
 /* iOS bridge adaptation; wrapper provenance pinned in family.lock.json. */
-/* melodee_core.c -- Melodee 1.4.3 (engines/melodee/upstream, GPL-3.0-only, Kerem Kilic, from
+/* melodee_core.c -- Melodee 1.6.0-rc.5 (engines/melodee/upstream, GPL-3.0-only, Kerem Kilic, from
  * Felucca by Leo Kuroshita / Hügelton Instruments), the whole firmware, as a library the plugin
  * can drive: a virtual FM-1 running Melodee, with its sound, sequencer, screen, front panel,
  * projects, user presets, CZ and FM6 tone banks and editor protocol. Built as
@@ -64,7 +64,7 @@ FEL_SECTIONS(FEL_BSS_SECTION, FEL_DATA_SECTION)
 #define MELODEE_USB_AUDIO 0              /* the FM-1's USB audio device: the plugin is the audio */
 #define MELODEE_CDC 0
 #define MELODEE_UART 1                   /* (its MIDI parser: the plugin's MIDI comes in through it too) */
-#define MELODEE_VERSION "v1.4.3"
+#define MELODEE_VERSION "v1.6.0-rc.5"
 #define MELODEE_DUAL_CORE 0              /* (1.0: one core here, as its single-core package; the plugin is the CPU) */
 #define MELODEE_CACHE_RAM 0              /* (no data cache to take as RAM) */
 #define MELODEE_CORE1_TEST 0
@@ -230,6 +230,9 @@ static int fl_write(uint32_t off, const void *p, uint32_t n) { (void)off; (void)
 static void melodee_init(void)
 {
     uint32_t i;
+    trk_voices_bind();
+    midi_insert_init();
+    punch_reset();
     chain_defaults(&chain_config);
     pattern_init();
     for (i = 0; i < G_COUNT; i++)
@@ -240,8 +243,8 @@ static void melodee_init(void)
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         track_defaults(t);
-        set_engine_of(t, TRK_DEF[i][0]);
-        apply_preset_to(t, TRK_DEF[i][1]);    /* with its sends */
+        set_engine_of(t, trk_def_engine(i));
+        apply_preset_to(t, trk_def_preset(i));    /* with its sends */
         t->engine = t->eng_req;
         track_defaults_steps(t);              /* (a sound load never touches them) */
         pat_sig[i] = steps_sig(t);            /* (empty: not the user's) */
@@ -321,6 +324,7 @@ static void fel_main_pass(void)
 {
     usb.uboot_req = 0;                   /* the boot loader key or an update command: never acted on */
     usb.ota_req = 0;
+    wire_release();
     pattern_poll();
     cz_service();                        /* (main.c's loop, in its order) */
     fm6_service();

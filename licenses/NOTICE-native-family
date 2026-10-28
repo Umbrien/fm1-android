@@ -1,7 +1,7 @@
 Additional exact source-native community engines
 
-Felucca 1.6.1, GPL-3.0-only, Leo Kuroshita / Hugelton Instruments.
-https://github.com/hugelton/Felucca commit a53ecf428c29c780108fd70a31b71a32a6b5c313
+Felucca 1.7.0, GPL-3.0-only, Leo Kuroshita / Hugelton Instruments.
+https://github.com/hugelton/Felucca commit d7b1b7c4099bba28854869ddb256b3d9f634cee8
 The MIT Felucca-Engines submodule retains its own license.
 
 X0X 1.1.0, GPL-3.0-only, Charles Vestal, after Felucca.
@@ -9,8 +9,8 @@ https://github.com/charlesvestal/fm1-x0x commit 27f6fac7e07ce97b5de158b45aec99f5
 Whole upstream application, sequencer and real sound-engine source are compiled;
 its hardware platform is adapted to the serial native worker, physical flash and panel.
 
-Melodee 1.4.3, GPL-3.0-only, Kerem Kilic / Ellic Studio, after Felucca.
-https://github.com/keremimo/melodee commit ba9c812a603607012d68544b1acb6ccc8033eec5
+Melodee 1.6.0-rc.5, GPL-3.0-only, Kerem Kilic / Ellic Studio, after Felucca.
+https://github.com/keremimo/melodee commit 7d2dfa33da8bc8835248be5475e890624d53802e
 The included Casio CZ-1 and Sequential Prophet factory programs retain their
 respective owners' rights; upstream does not grant a redistribution license.
 External engine source and generated resources remain in the ignored local cache.

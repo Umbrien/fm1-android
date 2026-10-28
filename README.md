@@ -9,20 +9,20 @@ No account, telemetry or network permission is required by the app.
 
 | Instrument | Exact release | Engine ID |
 | --- | --- | --- |
-| SLOOP | 2.8 | 2 |
-| Felucca | 1.6.1 | 3 |
+| SLOOP | 2.8.3 | 2 |
+| Felucca | 1.7.0 | 3 |
 | X0X | 1.1.0 | 4 |
-| Melodee | 1.4.3 | 5 |
-| FM1 Open portable preview | V13 | 6 |
-| Skiff | 1.4 | 7 |
+| Melodee | 1.6.0-rc.5 | 5 |
+| FM1 Open portable preview | V14 | 6 |
+| Skiff | 2.0.2 | 7 |
 | FoMni | 0.4 | 8 |
 | Jangada | 1.0.1 | 9 |
-| Clipper (experimental) | 1.1-experimental | 10 |
+| Clipper | 1.2 | 10 |
 | M-VAVE Stock (recompiled) | V15 | 11 (ARM64 JIT) |
 | FM-1+VA (recompiled) | 102 | 12 (ARM64 JIT) |
-| ChoralRoot | 0.26.1 | 14 |
-| GHOULBOX | 2.3.2 | 15 |
-| JIANT | 0.9.9 | 16 |
+| ChoralRoot | 0.27 | 14 |
+| GHOULBOX | 2.4 | 15 |
+| JIANT | 0.9.9-par12 | 16 |
 
 Use **Instruments → Open .fwsc…** to import an FM-1 firmware from local storage.
 The app unpacks the original binary and compiles hot PI32 instruction blocks to
@@ -58,9 +58,9 @@ Changing the app ID installs a separate app alongside an earlier installation;
 it does not automatically adopt that app's private data or remove it. To move
 SLOOP work, export project copies or complete workspace backups from the earlier
 app, then import them with Projects and files in this app. Other instruments'
-private autosaves are not automatically transferred. The project/backup schema is unchanged. SLOOP 2.7.1 workspace imports are
-validated by a disposable 2.8 candidate before replacing current work; new exports
-identify SLOOP 2.8. Older apps may reject these newer exports.
+private autosaves are not automatically transferred. The project/backup schema is unchanged. SLOOP 2.7.1 and 2.8 workspace imports are
+validated by a disposable 2.8.3 candidate before replacing current work; new exports
+identify SLOOP 2.8.3. Older apps may reject these newer exports.
 
 ## Build
 
@@ -122,7 +122,7 @@ adb shell am start -n org.fm1.android/.MainActivity
 ./Android/test.sh
 ```
 
-The instrumentation app uses the same local signer. Eighteen default cases
+The instrumentation app uses the same local signer. Nineteen default cases
 exercise all engines, SLOOP files/audio, and real Activity input/lifecycle/state.
 The additional iOS exchange case is optional and requires explicit external test
 fixtures through `FM1_EXCHANGE_FIXTURES`; no private export is included. Tests
