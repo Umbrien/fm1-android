@@ -5,7 +5,9 @@ Twelve pinned source-compiled instruments plus emulated stock V15, stock V16 and
 share a native Kotlin multitouch panel with six finishes, fixed-size knobs, keyboard illumination and a collapsible header.
 No account, telemetry or network permission is required by the app.
 
-![FM-1 Android panel](docs/screenshot.png)
+![FM-1 for Android: SLOOP in black, X0X in purple, and Melodee in orange](docs/firmware-gallery.png)
+
+*Three instruments, three finishes. Screens captured from the Android emulator.*
 
 | Instrument | Exact release | Engine ID |
 | --- | --- | --- |
