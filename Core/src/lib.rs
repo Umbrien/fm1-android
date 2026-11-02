@@ -796,10 +796,10 @@ mod native_public_abi_tests {
         let official =
             std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_OFFICIAL_PREVIEW").unwrap());
         let mut cases = vec![
-            (2, sloop.join("docs/firmware/sloop-2.8.3.fwsc"), RAM),
+            (2, sloop.join("docs/firmware/sloop-2.8.4.fwsc"), RAM),
             (3, family.join("felucca-1.7.0.fwsc"), RAM),
             (4, family.join("x0x-1.1.0.fwsc"), RAM),
-            (5, family.join("melodee-1.6.0-rc.5.fwsc"), RAM),
+            (5, family.join("melodee-1.6.0-rc.8.fwsc"), RAM),
             (
                 6,
                 official.parent().unwrap().join("FM1-Open-V14.fwsc"),

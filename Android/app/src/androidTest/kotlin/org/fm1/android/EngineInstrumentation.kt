@@ -250,7 +250,12 @@ class EngineInstrumentation : Instrumentation() {
             onWorker {
                 val handle = field(controller, "machine") as Long
                 val flash = NativeEngine.flash(handle)
-                marker = (flash.last().toInt() xor 0x25).toByte(); flash[flash.lastIndex] = marker
+                // Derive the marker from factory bytes, since an earlier test run may
+                // have left its marker in this identity's persistent save.
+                val pristine = NativeEngine.createBinary(bytes, true)
+                try { marker = (NativeEngine.flash(pristine).last().toInt() xor 0x25).toByte() }
+                finally { NativeEngine.destroy(pristine) }
+                flash[flash.lastIndex] = marker
                 require(NativeEngine.restore(handle, flash), "cannot edit imported state")
             }
             controller.selectEngine(2); barrier(controller)

@@ -1,7 +1,6 @@
-choralroot: source-compiled firmware through its source-host HAL.
-Native source/resource pins: Core/native/additions.lock.json.
-Source: https://github.com/Quixotic7/ChoralRootFM1/tree/v0.27
-Package identity: Core/native/packages.lock.json. Original licensing notice follows.
+ChoralRoot 0.27, source-native host build
+Source: https://github.com/Quixotic7/ChoralRootFM1/tree/8ce8c90bda85a44c6373710d99fa48f34430d331
+GPL-3.0-only; see LICENSE and component notices.
 
 # Felucca licensing
 

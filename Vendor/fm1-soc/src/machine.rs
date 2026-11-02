@@ -59,8 +59,12 @@ impl Bus for Core1Bus<'_> {
         self.stop_at_reset();
     }
     fn tick(&mut self) -> bool {
-        self.budget = self.budget.saturating_sub(1);
+        let stall = std::mem::take(&mut self.soc.core1_ticks);
+        self.budget = self.budget.saturating_sub(1 + stall);
         self.budget == 0
+    }
+    fn fetch_cost(&mut self, pc: u32) {
+        fm1_core::Bus::fetch_cost(&mut *self.soc, pc);
     }
     fn irq_pending(&self) -> bool {
         self.soc.periph.any_pending()
@@ -82,7 +86,8 @@ impl Bus for Core1Bus<'_> {
         self.budget.saturating_sub(1)
     }
     fn add_ticks(&mut self, n: u64) {
-        self.budget = self.budget.saturating_sub(n);
+        let stall = std::mem::take(&mut self.soc.core1_ticks);
+        self.budget = self.budget.saturating_sub(n + stall);
     }
     fn hw_lock(&mut self, core: u32, set: bool) -> bool {
         self.soc.hw_lock(core, set)
@@ -94,6 +99,12 @@ impl Bus for Core1Bus<'_> {
         }
     }
     fn service(&mut self) {
+        self.budget = self.budget.min(1);
+    }
+    fn idle(&mut self, _core: u32) {
+        // the core sleeps: this run ends after the instruction, and `run_cpu1` runs it again
+        // only once an interrupt from its bank is pending
+        self.soc.cpu1_idle = true;
         self.budget = self.budget.min(1);
     }
     fn next_tick_due(&self) -> bool {
@@ -333,7 +344,7 @@ impl Bus for ProbeBus<'_> {
         if self.load(a) { self.soc.read32(a) } else { 0 }
     }
     fn fetch32(&mut self, a: u32) -> u32 {
-        if self.load(a) { self.soc.read32(a) } else { 0 }
+        if self.load(a) { self.soc.fetch32(a) } else { 0 }
     }
     fn write8(&mut self, a: u32, v: u8) {
         if self.store(a, 1, a & !3) {
@@ -488,6 +499,46 @@ fn probe_loop(cpu: &mut Cpu, soc: &mut Soc, budget: u32) -> u32 {
     ran
 }
 
+/// Before cpu0's next block or instruction (`run_blocks`, and a runner's reference loop, one
+/// instruction an iteration: fm1-live's FM1_NO_BLOCKS, so the two agree): the PC limits the
+/// firmware wrote handed to the core, "in an ISR" for TIMER4's idle skip, and the interrupt that
+/// is due taken (the CPU exception once: entering its handler clears it).
+pub fn cpu0_between(cpu: &mut Cpu, soc: &mut Soc) {
+    if soc.pc_guard_dirty {
+        soc.pc_guard_dirty = false;
+        cpu.pc_win = soc.pc_windows();
+    }
+    soc.periph.in_isr = !cpu.irq_levels.is_empty();
+    if soc.periph.any_pending() {
+        if let Some((irq, prio)) = soc.pending_irq() {
+            if cpu.irq_ready(prio) {
+                let handler = soc.read32(VEC_BASE + 4 * irq as u32);
+                cpu.interrupt(handler, prio);
+                // the handler's first instruction may stay in compiled code (a micro-op now):
+                // TIMER4's idle skip must see "in an ISR" from that instruction on
+                soc.periph.in_isr = true;
+                if irq == 1 {
+                    soc.periph.exc_pending = false; // (the exception: taken once)
+                }
+            }
+        }
+    }
+}
+
+/// One instruction of cpu0 in a reference loop (after `cpu0_between`), with the PC limits as
+/// `run_blocks` has them, checked here at every instruction: the first one fetched outside them
+/// runs, then the CPU exception (DBG_MSG bit 12).
+pub fn cpu0_step(cpu: &mut Cpu, soc: &mut Soc) -> Result<(), String> {
+    let (_, trip) = cpu.pc_enter(cpu.pc);
+    if let Err(e) = cpu.step(soc) {
+        return Err(format!("{e:?} at pc {:#010x}", cpu.pc));
+    }
+    if trip {
+        soc.guard_trip(12);
+    }
+    Ok(())
+}
+
 /// cpu0's block loop: interrupts taken between blocks, the SoC serviced when a tick is due.
 /// `pending_tick` carries a tick already spent on the next instruction across calls. Returns
 /// the instructions run: n, or fewer when cpu0 released cpu1 or the chip reset (it stops right
@@ -510,18 +561,7 @@ pub fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, n: u32, pending_tick: &mut bool)
             soc.chip_reset(cpu);
             break;
         }
-        soc.periph.in_isr = !cpu.irq_levels.is_empty();
-        if soc.periph.any_pending() {
-            if let Some((irq, prio)) = soc.pending_irq() {
-                if cpu.irq_ready(prio) {
-                    let handler = soc.read32(VEC_BASE + 4 * irq as u32);
-                    cpu.interrupt(handler, prio);
-                    // the handler's first instruction may stay in compiled code (a micro-op now):
-                    // TIMER4's idle skip must see "in an ISR" from that instruction on
-                    soc.periph.in_isr = true;
-                }
-            }
-        }
+        cpu0_between(cpu, soc);
         let now = soc.periph.cycles;
         // not while a release is latched: run_fast's return must break below where it would
         // without the skip (lib.rs latches again on any later 0 -> 1 of 0x10008 bit 3)
@@ -536,18 +576,31 @@ pub fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, n: u32, pending_tick: &mut bool)
                 }
             }
         }
+        let mut stepped = false;
         match cpu.run_fast(soc, n - done) {
             Ok((0, _)) => {
                 if let Err(e) = cpu.step(soc) {
                     return Err(format!("{e:?} at pc {:#010x}", cpu.pc));
                 }
                 done += 1;
+                stepped = true;
             }
             Ok((k, due)) => {
                 done += k;
                 ticked = due;
             }
             Err(e) => return Err(format!("{e:?} at pc {:#010x}", cpu.pc)),
+        }
+        if std::mem::take(&mut cpu.pc_trip) {
+            // code fetched outside the PC limits: that instruction runs, then the CPU exception
+            // (DBG_MSG bit 12; on an FM-1 harbor's probes from RAM stopped so, reti the next pc)
+            if !stepped {
+                if let Err(e) = cpu.step(soc) {
+                    return Err(format!("{e:?} at pc {:#010x}", cpu.pc));
+                }
+                done += 1;
+            }
+            soc.guard_trip(12);
         }
         if soc.cpu1_release {
             break; // core 1 starts now (run_dual)
@@ -562,9 +615,13 @@ pub fn run_blocks(cpu: &mut Cpu, soc: &mut Soc, n: u32, pending_tick: &mut bool)
 /// stock firmware's stub at 0x020001B8 and X0X's entry both put it there; older images
 /// without it: the RAM job loop at 0x01C022B6). It starts in supervisor mode.
 pub fn released_cpu1(soc: &mut Soc, ram_size: usize) -> Option<Cpu> {
+    if soc.cpu1_fault.is_some() {
+        return None; // (stopped on a fault: held until a chip reset)
+    }
     if !std::mem::take(&mut soc.cpu1_release) && soc.read32(0x10008) & 8 == 0 {
         return None;
     }
+    soc.cpu1_idle = false;
     let entry = soc.read32(0x01C7_FFF8);
     let in_code = (0x0200_0000..0x0300_0000).contains(&entry) || (RAM_BASE..RAM_BASE + ram_size as u32).contains(&entry);
     if std::env::var_os("FM1_DUAL_TRACE").is_some() {
@@ -581,10 +638,36 @@ pub fn released_cpu1(soc: &mut Soc, ram_size: usize) -> Option<Cpu> {
 /// Run cpu1 for up to `cycles` instructions: interrupts from its own bank, then blocks or
 /// single steps; back where it started with nothing changed means it is idle.
 pub fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> {
-    if soc.core_paused(1) || soc.reset_due() {
+    if soc.core_paused(1) || soc.reset_due() || soc.cpu1_fault.is_some() {
         return Ok(());
     }
+    if soc.cpu1_idle {
+        // asleep since its `idle`: on again only with an interrupt from its bank pending
+        if !(soc.periph.any_pending() && soc.pending_irq_for(1).is_some()) {
+            return Ok(());
+        }
+        soc.cpu1_idle = false;
+    }
     let probe = (c1.pc, c1.regs, c1.sp);
+    c1.probe[..16].copy_from_slice(&c1.regs);
+    c1.probe[16] = c1.sp;
+    // (with FM1_STRICT's costs, an instruction that ran past the slice's end is owed from the next one)
+    let mut cycles = cycles;
+    if c1.cost_model {
+        let d = soc.core1_debt.min(cycles);
+        soc.core1_debt -= d;
+        cycles -= d;
+        if cycles == 0 {
+            return Ok(());
+        }
+    }
+    soc.core1_charging = true;
+    let r = run_cpu1_in(c1, soc, cycles, probe);
+    soc.core1_charging = false;
+    r
+}
+
+fn run_cpu1_in(c1: &mut Cpu, soc: &mut Soc, cycles: u64, probe: (u32, [u32; 16], u32)) -> Result<(), String> {
     let mut left = cycles.min(1 << 20);
     // first a block at a time, looking for the way back to where it started (a polling loop
     // goes round in well under this); then, busy, in big stretches
@@ -609,7 +692,8 @@ pub fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> 
         // (a stretch: its last call may end up to `STRETCH_ROOM` past what is left, and its ticks
         // never run out)
         let span = if stretch { probing.min(left) + fm1_core::STRETCH_ROOM as u64 } else { busy };
-        let mut bus = Core1Bus { soc: &mut *soc, budget: span.max(64) + 1 };
+        let budget0 = span.max(64) + 1;
+        let mut bus = Core1Bus { soc: &mut *soc, budget: budget0 };
         // (probing: the block at pc, to its last instruction or to where the probe began if that
         // lies inside it, whether it runs compiled or not)
         let chunk = if stretch || probing == 0 { span } else { c1.block_len_to(&mut bus, probe.0).max(1) as u64 };
@@ -629,10 +713,23 @@ pub fn run_cpu1(c1: &mut Cpu, soc: &mut Soc, cycles: u64) -> Result<(), String> 
             Ok((k, _)) => k as u64,
             Err(e) => return Err(format!("cpu1: {e:?} at pc {:#010x}", c1.pc)),
         };
+        // (with FM1_STRICT's costs, core 1's time is the ticks it spent, not its instructions)
+        let k = if c1.cost_model {
+            let stall = std::mem::take(&mut bus.soc.core1_ticks);
+            (budget0 - bus.budget + stall).max(1)
+        } else {
+            k
+        };
+        if c1.cost_model && k > left {
+            soc.core1_debt += k - left;
+        }
         left = left.saturating_sub(k);
         probing = probing.saturating_sub(k);
         if soc.reset_due() {
             break; // (cpu1 wrote PR_PWR: `Core1Bus::stop_at_reset`)
+        }
+        if soc.cpu1_idle {
+            break; // asleep (`Core1Bus::idle`)
         }
         if c1.pc == probe.0 && c1.sp == probe.2 && c1.regs == probe.1 {
             break; // polling with nothing to do
@@ -686,6 +783,8 @@ fn run_dual_from(
     while cpu1.is_none() {
         *cpu1 = released_cpu1(soc, ram_size).map(|mut c| {
             c.jit_on = jit_on;
+            // (FM1_STRICT costs core 1's instructions as core 0's)
+            c.cost_model = soc.xip_cache.is_some();
             c
         });
         if cpu1.is_some() || done >= n {
@@ -718,7 +817,15 @@ fn run_dual_from(
         }
         done += k;
         let dt = soc.periph.cycles - c0;
-        run_cpu1(c1, soc, dt)?;
+        if let Err(e) = run_cpu1(c1, soc, dt) {
+            if !soc.cpu1_survives {
+                return Err(e);
+            }
+            // the chip's core 1 faults there and stops; cpu0 goes on alone (a firmware built
+            // for a core 1 that fails falls back to one core: felucca-bsp's cpu2_fallback)
+            eprintln!("cpu1 stopped at {} ms: {e} (the chip's core would fault; cpu0 goes on alone)", soc.periph.ms());
+            soc.cpu1_fault = Some(e);
+        }
     }
     Ok(done)
 }
@@ -792,6 +899,125 @@ mod tests {
             assert!(seen.len() >= 4, "both loops seen at chunk ends: {seen:x?}");
         }
         (a, sa)
+    }
+
+    #[test]
+    fn code_outside_the_pc_limits_raises_the_exception() {
+        // the PC limits as Dinghy's fm1_guard_enable sets them, around code that is not in them
+        // (harbor's probes from RAM on an FM-1, 2026-10-24): DBG_MSG bit 12 and the exception pend
+        let code = [0x20u8, 0x00].repeat(32); // csync x 32
+        let (mut cpu, mut soc) = machine(&code, &[], false);
+        soc.write32(0x1eef100, 0xf << 4); // IRQ 1 enabled, priority 7 (as fm1_irq.h)
+        soc.write32(0x1eee384, XIP_BASE + 0x1000); // window 0 (low, high): past the code
+        soc.write32(0x1eee380, XIP_BASE + 0x2000);
+        soc.write32(0x1eee38c, RAM_BASE); // window 1: RAM
+        soc.write32(0x1eee388, RAM_BASE + 0xfff);
+        let mut t = false;
+        run_blocks(&mut cpu, &mut soc, 8, &mut t).unwrap();
+        assert_ne!(soc.read32(0x1eee244) & 1 << 12, 0);
+        assert!(soc.periph.exc_pending);
+        soc.write32(0x1eee248, 1 << 12); // DBG_MSG_CLR
+        assert_eq!(soc.read32(0x1eee244) & 1 << 12, 0);
+        // the code inside window 0: nothing
+        let (mut cpu, mut soc) = machine(&code, &[], false);
+        soc.write32(0x1eee384, XIP_BASE);
+        soc.write32(0x1eee380, XIP_BASE + 0xfff);
+        run_blocks(&mut cpu, &mut soc, 8, &mut t).unwrap();
+        assert!(!soc.periph.exc_pending);
+        assert_eq!(soc.dbg_cause, 0);
+    }
+
+    #[test]
+    fn the_exception_is_dropped_when_irq_1_is_not_enabled() {
+        // a guard that trips in a firmware without the exception's handler: the cause is kept, but
+        // nothing stays pending for good (no loop skip or idle skip ever again)
+        let (_, mut soc) = machine(&[0x20, 0x00], &[], false);
+        soc.write32(0x1eee340, 3 << 4); // DBG_EN: AXI read / write invalid
+        soc.read32(0x100);
+        assert!(!soc.periph.exc_pending);
+        assert!(!soc.periph.any_pending());
+        assert_ne!(soc.read32(0x1eee244) & 1 << 4, 0);
+    }
+
+    #[test]
+    fn emu_msg_reads_its_causes_and_a_write_clears_them() {
+        // fm1_irq.h's init writes all ones: that clears, and is not read back
+        let (_, mut soc) = machine(&[0x20, 0x00], &[], false);
+        soc.write32(0x1eef0d4, 0xffff_ffff);
+        assert_eq!(soc.read32(0x1eef0d4), 0);
+        soc.strict_align = true;
+        soc.read32(RAM_BASE + 2); // misaligned: bit 0
+        assert_eq!(soc.read32(0x1eef0d4), 1);
+        soc.write32(0x1eef0d4, 2); // another bit: bit 0 stays
+        assert_eq!(soc.read32(0x1eef0d4), 1);
+        soc.write32(0x1eef0d4, 1);
+        assert_eq!(soc.read32(0x1eef0d4), 0);
+        // DBG_MSG: a console word written there is not read back as causes
+        soc.write32(0x1eee244, 0x4142_4344);
+        assert_eq!(soc.read32(0x1eee244), 0);
+    }
+
+    #[test]
+    fn a_chip_reset_clears_the_guards() {
+        // after a watchdog or PR_PWR reset the PC limits and the causes are as at power-on: a boot
+        // into code outside the old windows takes no exception
+        let code = [0x20u8, 0x00].repeat(32);
+        let (mut cpu, mut soc) = machine(&code, &[], false);
+        soc.write32(0x1eef100, 0xf << 4);
+        let mut t = false;
+        run_blocks(&mut cpu, &mut soc, 1, &mut t).unwrap(); // (the boot state taken)
+        soc.write32(0x1eee384, XIP_BASE + 0x1000);
+        soc.write32(0x1eee380, XIP_BASE + 0x2000);
+        run_blocks(&mut cpu, &mut soc, 8, &mut t).unwrap();
+        assert!(cpu.pc_win.is_some() && soc.dbg_cause != 0);
+        soc.emu_cause = 1;
+        soc.reset_req = Some(crate::p33::P33::RST_SOFT);
+        run_blocks(&mut cpu, &mut soc, 8, &mut t).unwrap();
+        assert_eq!(soc.resets, 1);
+        assert_eq!((soc.dbg_cause, soc.emu_cause, soc.periph.exc_pending), (0, 0, false));
+        assert!(cpu.pc_win.is_none() && soc.pc_windows().is_none());
+        run_blocks(&mut cpu, &mut soc, 8, &mut t).unwrap();
+        assert_eq!(soc.dbg_cause, 0, "the boot runs outside the old windows: no exception");
+    }
+
+    #[test]
+    fn the_reference_loop_has_the_pc_limits_and_takes_the_exception_once() {
+        // `cpu0_between` / `cpu0_step` (fm1-live's FM1_NO_BLOCKS): the PC limits apply at every
+        // instruction, and the exception is taken once (a handler that returns is not re-entered)
+        let mut code = [0x20u8, 0x00].repeat(32); // csync x 32
+        code.resize(0x100, 0);
+        code[0x80..0x82].copy_from_slice(&[0x20, 0x00]); // the handler: csync ...
+        let (mut cpu, mut soc) = machine(&code, &[], false);
+        soc.write32(0x1eef100, 0xf << 4);
+        soc.write32(VEC_BASE + 4, XIP_BASE + 0x80);
+        soc.write32(0x1eee384, XIP_BASE + 0x80); // window 0: the handler only
+        soc.write32(0x1eee380, XIP_BASE + 0xff);
+        cpu.ie = true;
+        cpu.sreg_store[0] |= 0x100;
+        let mut taken = 0;
+        for _ in 0..6 {
+            cpu0_between(&mut cpu, &mut soc);
+            if cpu.pc == XIP_BASE + 0x80 {
+                taken += 1;
+                break;
+            }
+            cpu0_step(&mut cpu, &mut soc).unwrap();
+        }
+        assert_eq!(taken, 1, "the exception after the first instruction outside the limits");
+        assert_ne!(soc.dbg_cause & 1 << 12, 0);
+        assert!(!soc.periph.exc_pending, "taken once");
+    }
+
+    #[test]
+    fn null_page_access_raises_the_exception_once_armed() {
+        let (_, mut soc) = machine(&[0x20, 0x00], &[], false);
+        soc.write32(0x1eef100, 0xf << 4); // IRQ 1 enabled
+        soc.read32(0x100);
+        assert!(!soc.periph.exc_pending, "not armed");
+        soc.write32(0x1eee340, 3 << 4); // DBG_EN: AXI read / write invalid
+        soc.read32(0x100);
+        assert!(soc.periph.exc_pending);
+        assert_ne!(soc.read32(0x1eee244) & 1 << 4, 0);
     }
 
     #[test]
@@ -1043,6 +1269,83 @@ mod tests {
             assert_eq!(soc.resets, 1);
             assert!(c1.is_none(), "core 1 held again");
             assert_eq!(soc.read32(RAM_BASE + 0x10000), 0, "core 1 ran on after its reset (jit {jit})");
+        }
+    }
+
+    /// `idle;  *(int *)0x01C10000 = 0x600d;  for (;;);`: core 1 sleeps, then stores a word.
+    const CORE1_IDLE: [u8; 20] = [
+        0x01, 0x00, 0xc0, 0xff, 0x00, 0x00, 0xc1, 0x01, 0x41, 0xe0, 0x0d, 0x60, 0x81, 0x60, 0xf7, 0x9f, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn core_1_sleeps_on_idle_until_an_interrupt_from_its_bank_is_pending() {
+        for jit in [false, true] {
+            let (mut cpu, mut c1, mut soc, mut t) = two_cores(&CORE1_IDLE, jit);
+            let mut slices = |c1: &mut Option<Cpu>, soc: &mut Soc, n: usize| {
+                for _ in 0..n {
+                    run_dual(c1, soc, SLICE, 1 << 20, jit, |s, k| run_blocks(&mut cpu, s, k, &mut t)).unwrap();
+                }
+            };
+            slices(&mut c1, &mut soc, 8);
+            assert!(soc.cpu1_idle, "asleep after idle (jit {jit})");
+            assert_eq!(soc.read32(RAM_BASE + 0x10000), 0, "ran on past idle (jit {jit})");
+            // a software interrupt (ILAT bit 0, IRQ 120) enabled for cpu0's bank only: not its
+            soc.write32(0x1eef13c, 0x3);
+            soc.write32(0x1eef1a0, 1);
+            slices(&mut c1, &mut soc, 8);
+            assert!(soc.cpu1_idle, "woke on an interrupt of the other core's bank (jit {jit})");
+            assert_eq!(soc.read32(RAM_BASE + 0x10000), 0);
+            // enabled in its own bank (0x1EEF300): it wakes and goes on after the idle
+            soc.write32(0x1eef33c, 0x3);
+            slices(&mut c1, &mut soc, 8);
+            assert!(!soc.cpu1_idle, "still asleep (jit {jit})");
+            assert_eq!(soc.read32(RAM_BASE + 0x10000), 0x600d, "did not go on after the idle (jit {jit})");
+        }
+    }
+
+    /// Core 1 on words no instruction matches (erased flash, as COSMOS 0.23's core 1 entry).
+    const CORE1_ERASED: [u8; 8] = [0xff; 8];
+
+    #[test]
+    fn a_fault_on_core_1_halts_the_machine_unless_it_survives() {
+        for jit in [false, true] {
+            // the default: the machine halts there, as any fault
+            let (mut cpu, mut soc) = machine(&[&[0xf7, 0x9f], CORE1_ERASED.as_slice()].concat(), &[], false);
+            cpu.jit_on = jit;
+            soc.take_boot(&cpu);
+            soc.write32(0x01c7_fff8, XIP_BASE + 2);
+            soc.write32(0x10008, 8);
+            let (mut c1, mut t) = (None, false);
+            let mut halted = false;
+            for _ in 0..4 {
+                if run_dual(&mut c1, &mut soc, SLICE, 1 << 20, jit, |s, k| run_blocks(&mut cpu, s, k, &mut t)).is_err() {
+                    halted = true;
+                    break;
+                }
+            }
+            assert!(halted, "ran on past core 1's fault (jit {jit})");
+            // opted in: core 1 stops alone, cpu0 goes on, the fault is kept until a reset
+            let (mut cpu, mut c1, mut soc, mut t) = {
+                let (mut cpu, mut soc) = machine(&[&[0xf7, 0x9f], CORE1_ERASED.as_slice()].concat(), &[], false);
+                cpu.jit_on = jit;
+                soc.cpu1_survives = true;
+                soc.take_boot(&cpu);
+                soc.write32(0x01c7_fff8, XIP_BASE + 2);
+                soc.write32(0x10008, 8);
+                (cpu, None, soc, false)
+            };
+            let before = cpu.insn_count;
+            for _ in 0..4 {
+                run_dual(&mut c1, &mut soc, SLICE, 1 << 20, jit, |s, k| run_blocks(&mut cpu, s, k, &mut t)).unwrap();
+            }
+            assert!(soc.cpu1_fault.is_some(), "the fault kept (jit {jit})");
+            assert!(cpu.insn_count > before + 2 * SLICE as u64, "cpu0 went on (jit {jit})");
+            // core 1 stays where it stopped
+            let stopped = c1.as_ref().map(|c| (c.pc, c.insn_count));
+            for _ in 0..4 {
+                run_dual(&mut c1, &mut soc, SLICE, 1 << 20, jit, |s, k| run_blocks(&mut cpu, s, k, &mut t)).unwrap();
+            }
+            assert_eq!(c1.as_ref().map(|c| (c.pc, c.insn_count)), stopped, "core 1 ran on after its fault (jit {jit})");
         }
     }
 

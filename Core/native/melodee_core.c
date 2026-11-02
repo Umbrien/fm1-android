@@ -1,5 +1,5 @@
 /* iOS bridge adaptation; wrapper provenance pinned in family.lock.json. */
-/* melodee_core.c -- Melodee 1.6.0-rc.5 (engines/melodee/upstream, GPL-3.0-only, Kerem Kilic, from
+/* melodee_core.c -- Melodee 1.6.0-rc.8 (engines/melodee/upstream, GPL-3.0-only, Kerem Kilic, from
  * Felucca by Leo Kuroshita / Hügelton Instruments), the whole firmware, as a library the plugin
  * can drive: a virtual FM-1 running Melodee, with its sound, sequencer, screen, front panel,
  * projects, user presets, CZ and FM6 tone banks and editor protocol. Built as
@@ -64,7 +64,7 @@ FEL_SECTIONS(FEL_BSS_SECTION, FEL_DATA_SECTION)
 #define MELODEE_USB_AUDIO 0              /* the FM-1's USB audio device: the plugin is the audio */
 #define MELODEE_CDC 0
 #define MELODEE_UART 1                   /* (its MIDI parser: the plugin's MIDI comes in through it too) */
-#define MELODEE_VERSION "v1.6.0-rc.5"
+#define MELODEE_VERSION "v1.6.0-rc.8"
 #define MELODEE_DUAL_CORE 0              /* (1.0: one core here, as its single-core package; the plugin is the CPU) */
 #define MELODEE_CACHE_RAM 0              /* (no data cache to take as RAM) */
 #define MELODEE_CORE1_TEST 0

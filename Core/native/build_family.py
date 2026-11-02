@@ -77,7 +77,7 @@ def main():
             marker=work/'state-marker.h'
             marker.write_text('#include <stdint.h>\n#include <stddef.h>\n#include <stdlib.h>\n#include <string.h>\n#include <math.h>\n#include <time.h>\n#pragma clang section bss="__DATA,__felbss" data="__DATA,__feldata"\n'.replace("__DATA,__felbss",tc.bss).replace("__DATA,__feldata",tc.data))
             common=['-target',TRIPLES[a.target],*flags,'-O2','-std=gnu11','-w','-include',marker,*defines,
-                    '-DX0X_HOST','-DX0X_VERSION="1.1.0"','-I'+str(upstream/'firmware/src'),'-I'+str(upstream/'firmware/src/dsp')]
+                    '-DX0X_HOST','-DX0X_VERSION="1.2.0"','-I'+str(upstream/'firmware/src'),'-I'+str(upstream/'firmware/src/dsp')]
             units=[wrapper/'x0x_core.c']+[upstream/'firmware/src'/x for x in X0X_SOURCES]
             bitcodes=[]
             for i,unit in enumerate(units):

@@ -87,6 +87,10 @@ void plat_midi_out(uint32_t pkt)
         fprintf(midi_log, "%u ms: %02X %02X %02X\n", now_ms, (pkt >> 8) & 0xFF, (pkt >> 16) & 0xFF, (pkt >> 24) & 0xFF);
 }
 
+/* The Android host consumes outgoing diagnostics synchronously. */
+int plat_midi_out_room(void) { return MQ; }
+void plat_midi_out_main(uint32_t pkt) { plat_midi_out(pkt); }
+
 #define HOST_FLASH_SIZE 0x100000u
 static uint8_t host_flash[HOST_FLASH_SIZE];
 /* Full physical NOR image: source storage keeps its original A/B maps and CRCs. */

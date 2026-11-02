@@ -733,7 +733,7 @@ class EngineController(context: Context) {
 
     private fun requireSloop() {
         if (machine == 0L || selectedKind != 2)
-            throw IOException("Project files require SLOOP 2.8.3.")
+            throw IOException("Project files require SLOOP 2.8.4.")
     }
 
     private fun projectFile(name: String): File =
@@ -767,21 +767,21 @@ class EngineController(context: Context) {
         @JvmField
         val ENGINE_NAMES =
             arrayOf(
-                "SLOOP 2.8.3",
-                "Felucca 1.7.0",
-                "X0X 1.1.0",
-                "Melodee 1.6.0-rc.5",
+                "SLOOP 2.8.4",
+                "Felucca 1.9.0",
+                "X0X 1.2.0",
+                "Melodee 1.6.0-rc.8",
                 "FM1 Open V14 Preview",
-                "Skiff 2.0.2",
+                "Skiff 2.1.1",
                 "FoMni 0.4",
                 "Jangada 1.0.1",
-                "Clipper 1.2",
+                "Clipper 1.3",
                 "M-VAVE Stock V15 (emulated)",
                 "M-VAVE Stock V16 (emulated)",
                 "Baud Girl FM-1+VA 102 (emulated)",
-                "ChoralRoot 0.27",
+                "ChoralRoot 0.29",
                 "GHOULBOX 2.4",
-                "JIANT 0.9.9-par12",
+                "JIANT V10.35",
             )
         @JvmField val ENGINE_KINDS = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 17, 12, 14, 15, 16)
 

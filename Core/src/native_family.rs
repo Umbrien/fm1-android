@@ -490,32 +490,29 @@ pub(super) fn for_package(bytes: &[u8]) -> Option<Api> {
 }
 pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
     #[cfg(fm1_native_sloop)]
-    if (len == 0 || len == 610052) && digest == [84, 68, 175, 211, 198, 156, 64, 147, 82, 225, 174, 211, 90, 86, 32, 95, 19, 241, 30, 96, 121, 13, 225, 70, 89, 60, 70, 24, 164, 63, 53, 40]
+    if (len == 0 || len == 610052) && digest == [90, 106, 8, 67, 200, 104, 101, 13, 186, 103, 24, 207, 133, 228, 62, 113, 154, 236, 24, 195, 220, 92, 200, 3, 197, 124, 56, 179, 130, 21, 141, 78]
     {
         return Some(super::native_sloop::SLOOP);
     }
     #[cfg(fm1_native_clipper)]
-    if (len == 0 || len == 610072) && digest == [154, 36, 213, 221, 32, 165, 191, 248, 99, 112, 157, 50, 143, 44, 39, 127, 167, 16, 221, 49, 124, 137, 123, 204, 14, 132, 12, 93, 48, 64, 162, 230]
+    if (len == 0 || len == 610072) && digest == [203, 151, 109, 255, 3, 199, 48, 50, 209, 38, 91, 226, 169, 37, 191, 14, 199, 3, 86, 80, 150, 192, 58, 186, 60, 114, 168, 24, 171, 70, 40, 241]
     {
         return Some(clipper::API);
     }
     #[cfg(fm1_native_family)]
-    if (len == 0 || len == 610286) && digest == [191, 247, 198, 23, 207, 178, 200, 142, 102, 178, 42, 166, 145, 203, 121, 141, 250, 13, 156, 177, 47, 249, 167, 61, 234, 181, 29, 64, 78, 130, 129, 124]
+    if (len == 0 || len == 610286) && digest == [8, 193, 64, 128, 25, 208, 26, 62, 220, 110, 47, 55, 187, 97, 162, 77, 48, 40, 220, 250, 94, 217, 87, 13, 98, 40, 161, 235, 110, 117, 224, 164]
     {
         return Some(felucca::API);
     }
     #[cfg(fm1_native_family)]
     if (len == 0 || len == 609684)
         && digest
-            == [
-                160, 194, 157, 235, 147, 12, 101, 241, 212, 11, 86, 145, 183, 214, 115, 248, 97,
-                65, 139, 67, 139, 126, 101, 2, 124, 185, 198, 113, 230, 244, 79, 91,
-            ]
+            == [97, 239, 124, 132, 185, 64, 27, 239, 251, 117, 181, 224, 47, 217, 217, 111, 180, 216, 248, 196, 67, 198, 64, 124, 196, 146, 159, 141, 236, 82, 186, 8]
     {
         return Some(x0x::API);
     }
     #[cfg(fm1_native_family)]
-    if (len == 0 || len == 610583) && digest == [17, 104, 156, 65, 229, 217, 226, 27, 63, 32, 126, 28, 240, 25, 47, 190, 3, 122, 16, 8, 110, 148, 176, 184, 230, 26, 210, 30, 171, 148, 136, 121]
+    if (len == 0 || len == 668692) && digest == [28, 86, 203, 52, 251, 224, 7, 162, 27, 22, 153, 75, 33, 141, 71, 186, 18, 92, 120, 126, 192, 131, 221, 245, 204, 73, 110, 15, 27, 178, 122, 65]
     {
         return Some(melodee::API);
     }
@@ -546,12 +543,12 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
         return Some(jangada::API);
     }
     #[cfg(fm1_native_skiff)]
-    if (len == 0 || len == 610429) && digest == [227, 89, 46, 92, 224, 72, 35, 223, 138, 199, 43, 144, 246, 156, 58, 77, 87, 92, 177, 52, 73, 204, 59, 185, 232, 69, 207, 27, 250, 61, 84, 106]
+    if (len == 0 || len == 610429) && digest == [12, 250, 226, 67, 31, 53, 19, 101, 216, 56, 66, 191, 26, 56, 30, 228, 139, 174, 173, 55, 30, 129, 247, 127, 170, 162, 179, 198, 170, 187, 211, 4]
     {
         return Some(skiff::API);
     }
     #[cfg(fm1_native_additions)]
-    if (len == 0 || len == 610313) && digest == [160, 159, 158, 25, 182, 106, 145, 53, 29, 227, 124, 83, 46, 13, 21, 205, 192, 63, 249, 233, 200, 42, 11, 21, 44, 219, 102, 202, 63, 220, 3, 38] {
+    if (len == 0 || len == 610313) && digest == [176, 241, 10, 119, 43, 12, 21, 94, 176, 138, 160, 77, 200, 137, 18, 189, 47, 225, 185, 38, 55, 176, 54, 194, 14, 68, 202, 101, 160, 130, 41, 124] {
         return Some(choralroot::API);
     }
     #[cfg(fm1_native_additions)]
@@ -559,7 +556,7 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
         return Some(ghoulbox::API);
     }
     #[cfg(fm1_native_additions)]
-    if (len == 0 || len == 610280) && digest == [151, 56, 244, 115, 248, 181, 190, 212, 186, 106, 175, 182, 19, 47, 82, 13, 3, 224, 150, 131, 82, 26, 50, 9, 7, 1, 251, 244, 235, 106, 187, 60] {
+    if (len == 0 || len == 667488) && digest == [209, 10, 241, 1, 1, 73, 74, 177, 190, 159, 121, 49, 153, 215, 140, 90, 215, 178, 108, 46, 144, 153, 52, 5, 244, 93, 152, 101, 230, 226, 251, 96] {
         return Some(jiant::API);
     }
     None
@@ -739,36 +736,18 @@ mod tests {
     }
     #[test]
     fn catalogue_native_hash_lookup_is_exact_and_rejects_renamed_content() {
-        let root = std::path::PathBuf::from(
-            std::env::var_os("FM1_NATIVE_FAMILY").expect("configured native source root"),
-        );
-        let mut cases = vec![
-            (3, root.join("felucca-1.7.0.fwsc")),
-            (4, root.join("x0x-1.1.0.fwsc")),
-            (5, root.join("melodee-1.6.0-rc.5.fwsc")),
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let cases = [
+            (3, root.join("Research/LatestFirmware/felucca-1.9.0.fwsc")),
+            (4, root.join("Research/LatestFirmware/x0x-1.2.0.fwsc")),
+            (5, root.join("Research/LatestFirmware/melodee-1.6.0-rc.8.fwsc")),
+            (7, root.join("Research/LatestFirmware/skiff-2.1.1.fwsc")),
+            (8, root.join("Research/NativeExpansion/fomni-0.4.fwsc")),
+            (9, root.join("Research/NativeExpansion/jangada-1.0.1.fwsc")),
+            (14, root.join("Research/LatestFirmware/choralroot-0.29.fwsc")),
+            (15, root.join("Research/LatestFirmware/ghoulbox-2.4.fwsc")),
+            (16, root.join("Research/LatestFirmware/jiant-V10.35.fwsc")),
         ];
-        #[cfg(fm1_native_expansion)]
-        {
-            let extra = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_EXPANSION").unwrap());
-            cases.extend([
-                (8, extra.join("fomni-0.4.fwsc")),
-                (9, extra.join("jangada-1.0.1.fwsc")),
-            ]);
-        }
-        #[cfg(fm1_native_skiff)]
-        {
-            let extra = std::path::PathBuf::from(std::env::var_os("FM1_NATIVE_SKIFF").unwrap());
-            cases.push((7, extra.parent().unwrap().join("skiff-2.0.2.fwsc")));
-        }
-        #[cfg(fm1_native_additions)]
-        {
-            let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-            cases.extend([
-                (14, root.join("Research/ChoralRoot/choralroot-0.27.fwsc")),
-                (15, root.join("Research/Ghoulbox/ghoulbox-2.4.fwsc")),
-                (16, root.join("Research/Jiant/jiant-0.9.9-par12.fwsc")),
-            ]);
-        }
         for (kind, path) in cases {
             let mut package = std::fs::read(path).unwrap();
             assert_eq!(for_package(&package).unwrap().kind, kind);

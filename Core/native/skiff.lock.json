@@ -5,21 +5,21 @@
   "kind": 7,
   "prefix": "skf_",
   "source": "https://github.com/illuminus5/skiff",
-  "tag": "v2.0.2",
-  "commit": "4382e9cf5e5bfc8263ee3775c11c7f45373617a0",
+  "tag": "v2.1.1",
+  "commit": "48e77fda5916e9a5ba9e7339161f719d8877ce49",
   "flash_bytes": 1048576,
   "state_alignment": 16,
   "package": {
     "id": "skiff",
     "name": "Skiff",
-    "version": "2.0.2",
+    "version": "2.1.1",
     "author": "illuminus5",
     "size": 610429,
-    "sha256": "e3592e5ce04823df8ac72b90f69c3a4d575cb13449cc3bb9e845cf1bfa3d546a",
-    "url": "https://github.com/illuminus5/skiff/releases/download/v2.0.2/skiff-2.0.2.fwsc",
-    "source": "https://github.com/illuminus5/skiff/tree/v2.0.2",
+    "sha256": "0cfae2431f351365d83842bf1a381ee48baead371e81f77faaa2b3c6aabbd304",
+    "url": "https://github.com/illuminus5/skiff/releases/download/v2.1.1/skiff-2.1.1.fwsc",
+    "source": "https://github.com/illuminus5/skiff/tree/v2.1.1",
     "kind": 7,
-    "path": "Research/NativeSkiff/skiff-2.0.2.fwsc"
+    "path": "Research/LatestFirmware/skiff-2.1.1.fwsc"
   },
   "generated_headers_sha256": {
     "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",

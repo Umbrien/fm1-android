@@ -1,7 +1,7 @@
 {
   "source": "https://github.com/isod89/clipper-fm1",
-  "tag": "v1.2",
-  "commit": "a160376c5ef61d6836ff570df925d12b5a66fc63",
+  "tag": "v1.3",
+  "commit": "fbd8434e7b501ec5d772f5c5f656c25735929369",
   "generated_headers_sha256": {
     "felucca_drumkits.h": "3d6d07b4c47330aaa7dad53f187495aa4d46575ade0f8d0003404c6b125d63a0",
     "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",

@@ -29,38 +29,39 @@
   "firmwares": [
     {
       "id": "felucca",
-      "tag": "v1.7.0",
-      "commit": "d7b1b7c4099bba28854869ddb256b3d9f634cee8",
+      "tag": "v1.9.0",
+      "commit": "9f157010b66b8d6b3a25727901031809664d3f11",
       "source": "https://github.com/hugelton/Felucca",
       "prefix": "fel_",
       "package": {
         "id": "felucca",
-        "version": "1.7.0",
+        "version": "1.9.0",
         "size": 610286,
-        "sha256": "bff7c617cfb2c88e66b22aa691cb798dfa0d9cb12ff9a73deab51d404e82817c",
-        "url": "https://github.com/hugelton/Felucca/releases/download/v1.7.0/felucca-1.7.0.fwsc",
-        "source": "https://github.com/hugelton/Felucca/tree/v1.7.0",
+        "sha256": "08c1408019d01a3edc6e2f37bb61a24d3028dcfa5ed9570d6228a1eb6e75e0a4",
+        "url": "https://github.com/hugelton/Felucca/releases/download/v1.9.0/felucca-1.9.0.fwsc",
+        "source": "https://github.com/hugelton/Felucca/tree/v1.9.0",
         "name": "Felucca",
         "kind": 3,
-        "path": "Research/NativeFamily/felucca-1.7.0.fwsc"
+        "path": "Research/LatestFirmware/felucca-1.9.0.fwsc"
       },
       "generated_headers_sha256": {
+        "felucca_adpcm.h": "23d3caafe559cbaa910446c6d0bc1172e16b7bd3413c70b2c3f217a811487448",
         "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
         "felucca_samples.h": "d72405f100494dce4c3bff53de584423b0ab96cf9b196a85487b13206ae032bc",
         "felucca_tables.h": "a975289289c52b9f9fd2ff985a147b199f8a3afa9fb416e95f99cb83131993cb",
         "ui_fonts.h": "ccec7fcead654ccd6a279f56db4d74e4e62f275e92a13714006788568b43ed54",
         "ui_icons.h": "85947fe4a0307f806613870ad117c1fe4d4c7256786843ea88d14d104c7687aa",
         "ui_keycaps.h": "e07d6ffd60f98fc24ebe02025f09a40668f33bacd91c7f4a04bb4b11112995c8",
-        "ui_palettes.h": "e87e29243c6129e8bd238cae5b185ca0357483f6a1787f78f63ecf54ce8dad05"
+        "ui_palettes.h": "fa6f45410fd5ab486e7fb801ba308407ed14f63611ffdade997a3862ca6d0594"
       },
       "submodules": {
-        "firmware/engines": "04ffe903eb87a752305d1e5b10da01b53e4ab004"
+        "firmware/engines": "0f015add84d77d8ae0ead08de901b7ecf3686f18"
       }
     },
     {
       "id": "x0x",
-      "tag": "v1.1.0",
-      "commit": "27f6fac7e07ce97b5de158b45aec99f59a9e23fd",
+      "tag": "v1.2.0",
+      "commit": "ca2d377e3b9522579245152a81781a575f4d2fea",
       "source": "https://github.com/charlesvestal/fm1-x0x",
       "prefix": "x0x_",
       "package": {
@@ -72,7 +73,7 @@
         "source": "https://github.com/charlesvestal/fm1-x0x/tree/v1.1.0"
       },
       "generated_headers_sha256": {
-        "ann_words.h": "8391906881bf35cba6a8efd6cd330920a92a3a1820da7b1e1e943965e5fa7b6d",
+        "ann_words.h": "885784cee0b2968e683441a45c7cb6355040742b12bdcbf1979f084a36d482c9",
         "felucca_font.h": "a34e7985d7912168cfaa5abdc097268dfaf7de6b9cebeb3ec0fbb80aa2d2e554",
         "x0x_break_bank.h": "952a1949f20fe450944b087de2bd211b7b17ff2ee815b636cf0a8e7cf5dbe673",
         "x0x_drum_samples.h": "be1c1a9701c4eb264c0cc367e8b9ffadba51537e9d22cfaeaaee8ea6c1075094",
@@ -81,20 +82,20 @@
     },
     {
       "id": "melodee",
-      "tag": "v1.6.0-rc.5",
-      "commit": "7d2dfa33da8bc8835248be5475e890624d53802e",
+      "tag": "v1.6.0-rc.8",
+      "commit": "1150ef2f722721f16af0d279931d40b9edd0a4bf",
       "source": "https://github.com/keremimo/melodee",
       "prefix": "mel_",
       "package": {
         "id": "melodee",
-        "version": "1.6.0-rc.5",
-        "size": 610583,
-        "sha256": "11689c41e5d9e21b3f207e1cf0192fbe037a10086e94b0b8e61ad21eab948879",
-        "url": "https://github.com/keremimo/melodee/releases/download/v1.6.0-rc.5/melodee-1.6.0-rc.5.fwsc",
-        "source": "https://github.com/keremimo/melodee/tree/v1.6.0-rc.5",
+        "version": "1.6.0-rc.8",
+        "size": 668692,
+        "sha256": "1c56cb34fbe007a21b16994b218d47ba125c787ec083ddf5cc496e0f1bb27a41",
+        "url": "https://github.com/keremimo/melodee/releases/download/v1.6.0-rc.8/melodee-1.6.0-rc.8.fwsc",
+        "source": "https://github.com/keremimo/melodee/tree/v1.6.0-rc.8",
         "name": "Melodee",
         "kind": 5,
-        "path": "Research/NativeFamily/melodee-1.6.0-rc.5.fwsc"
+        "path": "Research/LatestFirmware/melodee-1.6.0-rc.8.fwsc"
       },
       "generated_headers_sha256": {
         "melodee_cz1.h": "8e1b2349fdc8dbf548d5f982f9c0c2c2a10838bc7ec8de1a268cd76c11a03c9f",

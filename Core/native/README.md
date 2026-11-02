@@ -20,7 +20,7 @@ Original source/component notices are retained under licenses/ and the root
 licenses/ directory. Existing Apple target support belongs to the shared native
 build tooling; this repository contains no iOS frontend or Xcode project.
 
-Clipper 1.2 shares the SLOOP hardware host, with separate source,
+Clipper 1.3 shares the SLOOP hardware host, with separate source,
 symbol prefix, state and flash. Its SLOOP-only typed file APIs are excluded.
 Stock V15 is an exact catalogue entry executed by the PI32v2 runtime with Android ARM64 JIT;
 it is distinct from the native FM1 Open V14 portable preview.
@@ -29,7 +29,7 @@ FM-1+VA Version 102 (kind 12) also executes its exact original package in the
 binary runtime. Package pins live in packages.lock.json; it has independent 1 MiB
 flash and is not admitted through the source-native registry.
 
-ChoralRoot 0.27 (kind 14) and GHOULBOX 2.4 (kind 15) compile their real
+ChoralRoot 0.29 (kind 14) and GHOULBOX 2.4 (kind 15) compile their real
 firmware DSP, UI and NOR storage to native ARM64 through the pinned source-host
 HALs. They use the shared per-instance state isolation pass, separate symbol
 prefixes and independent 1 MiB flash. Kind 13 remains reserved for imported
@@ -38,7 +38,7 @@ additions_prepare.py and additions_build.py prepare and build them. ChoralRoot's
 source-host second-part job executes inline on the owning serial worker.
 Original licensing notices and component texts are retained in licenses/.
 
-JIANT 0.9.9-par12 (kind 16) uses the same additions pipeline and its upstream source-host
-bridge. The pin matches the public stable installer, commit 527c7e4. Its splash
+JIANT V10.35 (kind 16) uses the same additions pipeline and its upstream source-host
+bridge. The pin matches the public stable installer, commit 5849555. Its splash
 lasts 1730 ms; input tests wait two seconds before playing notes. Generated resources,
 source files and the exact selector package are hash checked. No JIT is used.

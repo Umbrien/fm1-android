@@ -11,21 +11,21 @@ No account, telemetry or network permission is required by the app.
 
 | Instrument | Exact release | Engine ID |
 | --- | --- | --- |
-| SLOOP | 2.8.3 | 2 |
-| Felucca | 1.7.0 | 3 |
-| X0X | 1.1.0 | 4 |
-| Melodee | 1.6.0-rc.5 | 5 |
+| SLOOP | 2.8.4 | 2 |
+| Felucca | 1.9.0 | 3 |
+| X0X | 1.2.0 | 4 |
+| Melodee | 1.6.0-rc.8 | 5 |
 | FM1 Open portable preview | V14 | 6 |
-| Skiff | 2.0.2 | 7 |
+| Skiff | 2.1.1 | 7 |
 | FoMni | 0.4 | 8 |
 | Jangada | 1.0.1 | 9 |
-| Clipper | 1.2 | 10 |
+| Clipper | 1.3 | 10 |
 | M-VAVE Stock (emulated) | V15 | 11 (ARM64 JIT) |
 | M-VAVE Stock (emulated) | V16 | 17 (ARM64 JIT) |
 | Baud Girl FM-1+VA (emulated) | 102 | 12 (ARM64 JIT) |
-| ChoralRoot | 0.27 | 14 |
+| ChoralRoot | 0.29 | 14 |
 | GHOULBOX | 2.4 | 15 |
-| JIANT | 0.9.9-par12 | 16 |
+| JIANT | V10.35 | 16 |
 
 Use **Instruments → Open .fwsc…** to import an FM-1 firmware from local storage.
 The app unpacks the original binary and compiles hot PI32 instruction blocks to
@@ -62,8 +62,8 @@ it does not automatically adopt that app's private data or remove it. To move
 SLOOP work, export project copies or complete workspace backups from the earlier
 app, then import them with Projects and files in this app. Other instruments'
 private autosaves are not automatically transferred. The project/backup schema is unchanged. SLOOP 2.7.1 and 2.8 workspace imports are
-validated by a disposable 2.8.3 candidate before replacing current work; new exports
-identify SLOOP 2.8.3. Older apps may reject these newer exports.
+validated by a disposable 2.8.4 candidate before replacing current work; new exports
+identify SLOOP 2.8.4. Older apps may reject these newer exports.
 
 ## Build
 
@@ -74,7 +74,7 @@ engines; its built-in binary compiler works locally on imported packages.
 
 Validated build host: Apple Silicon macOS, Java 19/21, Rust, Python 3.12+, Android
 SDK platform 35/build-tools 35.0.0, NDK 27.2.12479018 and host LLVM 20. Linux NDK
-host discovery is supported but has not been validated. Kotlin 2.0.21 and its
+host discovery is supported but has not been validated. Kotlin 2.1.11 and its
 standard library are version-pinned; firmware resource generation needs
 build-only Pillow 13.0.0 with RAQM and fonttools. Exact generation-library versions and
 resource hashes are recorded in the lock files.
@@ -109,7 +109,7 @@ there is no iOS frontend in this repository.
 The Material 3 application shell follows system light/dark mode and uses Android
 wallpaper colors on supported devices, independently of the synth panel finish.
 The Gradle 8.13 wrapper verifies its distribution SHA256 and resolves pinned
-AGP 8.11.1, Kotlin 2.0.21, Material Components 1.13.0 and AndroidX dependencies.
+AGP 8.11.1, Kotlin 2.1.11, Material Components 1.13.0 and AndroidX dependencies.
 `Android/build.sh` still prepares native code, verifies firmware packages and
 signs the APK with the existing local development key. Gradle caches stay in
 ignored `.tools/gradle-home/`. First build requires network access.

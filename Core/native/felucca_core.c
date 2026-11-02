@@ -46,7 +46,7 @@ FEL_SECTIONS(FEL_BSS_SECTION, FEL_DATA_SECTION)
 #define __attribute__(x)
 #define FELUCCA_OTA 1                    /* the editor's SysEx plumbing in usb.c (not ota.c: never built) */
 #define FELUCCA_FLASH 1                  /* projects, user presets and their FM6 patches in "flash" (RAM below) */
-#define FELUCCA_VERSION "v1.7.0"
+#define FELUCCA_VERSION "v1.9.0"
 /* the user sample slots USR1..3: empty, and never written (the plugin takes no samples yet), so
  * one array of zeros for every copy (felucca_shared.c, written by CMakeLists.txt) rather than
  * 240 KB of each one's state */

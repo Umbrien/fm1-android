@@ -4,46 +4,46 @@
     {
       "id": "sloop",
       "name": "SLOOP",
-      "version": "2.8.3",
-      "source": "https://github.com/isod89/sloop-fm1/tree/v2.8.3",
-      "url": "https://github.com/isod89/sloop-fm1/releases/download/v2.8.3/sloop-2.8.3.fwsc",
+      "version": "2.8.4",
+      "source": "https://github.com/isod89/sloop-fm1/tree/v2.8.4",
+      "url": "https://github.com/isod89/sloop-fm1/releases/download/v2.8.4/sloop-2.8.4.fwsc",
       "size": 610052,
-      "sha256": "5444afd3c69c409352e1aed35a56205f13f11e60790de146593c4618a43f3528",
+      "sha256": "5a6a0843c868650dba6718cf85e43e719aec18c3dc5cc803c57c38b382158d4e",
       "kind": 2,
-      "path": "Research/NativeSloop/upstream-sloop-2.8/docs/firmware/sloop-2.8.3.fwsc"
+      "path": "Research/LatestFirmware/sloop-2.8.4.fwsc"
     },
     {
       "id": "felucca",
       "name": "Felucca",
-      "version": "1.7.0",
-      "source": "https://github.com/hugelton/Felucca/tree/v1.7.0",
-      "url": "https://github.com/hugelton/Felucca/releases/download/v1.7.0/felucca-1.7.0.fwsc",
+      "version": "1.9.0",
+      "source": "https://github.com/hugelton/Felucca/tree/v1.9.0",
+      "url": "https://github.com/hugelton/Felucca/releases/download/v1.9.0/felucca-1.9.0.fwsc",
       "size": 610286,
-      "sha256": "bff7c617cfb2c88e66b22aa691cb798dfa0d9cb12ff9a73deab51d404e82817c",
+      "sha256": "08c1408019d01a3edc6e2f37bb61a24d3028dcfa5ed9570d6228a1eb6e75e0a4",
       "kind": 3,
-      "path": "Research/NativeFamily/felucca-1.7.0.fwsc"
+      "path": "Research/LatestFirmware/felucca-1.9.0.fwsc"
     },
     {
       "id": "x0x",
       "name": "X0X",
-      "version": "1.1.0",
-      "source": "https://github.com/charlesvestal/fm1-x0x/tree/v1.1.0",
-      "url": "https://github.com/charlesvestal/fm1-x0x/releases/download/v1.1.0/x0x-1.1.0.fwsc",
+      "version": "1.2.0",
+      "source": "https://github.com/charlesvestal/fm1-x0x/tree/v1.2.0",
+      "url": "https://github.com/charlesvestal/fm1-x0x/releases/download/v1.2.0/x0x-1.2.0.fwsc",
       "size": 609684,
-      "sha256": "a0c29deb930c65f1d40b5691b7d673f861418b438b7e65027cb9c671e6f44f5b",
+      "sha256": "61ef7c84b9401beffb75b5e02fd9d96fb4d8f8c443c6407cc4929f8dec52ba08",
       "kind": 4,
-      "path": "Research/NativeFamily/x0x-1.1.0.fwsc"
+      "path": "Research/LatestFirmware/x0x-1.2.0.fwsc"
     },
     {
       "id": "melodee",
       "name": "Melodee",
-      "version": "1.6.0-rc.5",
-      "source": "https://github.com/keremimo/melodee/tree/v1.6.0-rc.5",
-      "url": "https://github.com/keremimo/melodee/releases/download/v1.6.0-rc.5/melodee-1.6.0-rc.5.fwsc",
-      "size": 610583,
-      "sha256": "11689c41e5d9e21b3f207e1cf0192fbe037a10086e94b0b8e61ad21eab948879",
+      "version": "1.6.0-rc.8",
+      "source": "https://github.com/keremimo/melodee/tree/v1.6.0-rc.8",
+      "url": "https://github.com/keremimo/melodee/releases/download/v1.6.0-rc.8/melodee-1.6.0-rc.8.fwsc",
+      "size": 668692,
+      "sha256": "1c56cb34fbe007a21b16994b218d47ba125c787ec083ddf5cc496e0f1bb27a41",
       "kind": 5,
-      "path": "Research/NativeFamily/melodee-1.6.0-rc.5.fwsc"
+      "path": "Research/LatestFirmware/melodee-1.6.0-rc.8.fwsc"
     },
     {
       "id": "official-open",
@@ -59,13 +59,13 @@
     {
       "id": "skiff",
       "name": "Skiff",
-      "version": "2.0.2",
-      "source": "https://github.com/illuminus5/skiff/tree/v2.0.2",
-      "url": "https://github.com/illuminus5/skiff/releases/download/v2.0.2/skiff-2.0.2.fwsc",
+      "version": "2.1.1",
+      "source": "https://github.com/illuminus5/skiff/tree/v2.1.1",
+      "url": "https://github.com/illuminus5/skiff/releases/download/v2.1.1/skiff-2.1.1.fwsc",
       "size": 610429,
-      "sha256": "e3592e5ce04823df8ac72b90f69c3a4d575cb13449cc3bb9e845cf1bfa3d546a",
+      "sha256": "0cfae2431f351365d83842bf1a381ee48baead371e81f77faaa2b3c6aabbd304",
       "kind": 7,
-      "path": "Research/NativeSkiff/skiff-2.0.2.fwsc"
+      "path": "Research/LatestFirmware/skiff-2.1.1.fwsc"
     },
     {
       "id": "fomni",
@@ -92,13 +92,13 @@
     {
       "id": "clipper",
       "name": "Clipper",
-      "version": "1.2",
-      "source": "https://github.com/isod89/clipper-fm1/tree/v1.2",
-      "url": "https://github.com/isod89/clipper-fm1/releases/download/v1.2/clipper-1.2.fwsc",
+      "version": "1.3",
+      "source": "https://github.com/isod89/clipper-fm1/tree/v1.3",
+      "url": "https://github.com/isod89/clipper-fm1/releases/download/v1.3/clipper-1.3.fwsc",
       "size": 610072,
-      "sha256": "9a24d5dd20a5bff863709d328f2c277fa710dd317c897bcc0e840c5d3040a2e6",
+      "sha256": "cb976dff03c73032d1265be2a925bf0ec703565096c03aba3c72a818ab4628f1",
       "kind": 10,
-      "path": "Research/NativeClipper/clipper-1.2.fwsc"
+      "path": "Research/LatestFirmware/clipper-1.3.fwsc"
     },
     {
       "id": "stock",
@@ -125,13 +125,13 @@
     {
       "id": "choralroot",
       "name": "ChoralRoot",
-      "version": "0.27",
-      "source": "https://github.com/Quixotic7/ChoralRootFM1/tree/v0.27",
-      "url": "https://github.com/Quixotic7/ChoralRootFM1/releases/download/v0.27/choralroot-0.27.fwsc",
+      "version": "0.29",
+      "source": "https://github.com/Quixotic7/ChoralRootFM1/tree/v0.29",
+      "url": "https://github.com/Quixotic7/ChoralRootFM1/releases/download/v0.29/choralroot-0.29.fwsc",
       "size": 610313,
-      "sha256": "a09f9e19b66a91351de37c532e0d15cdc03ff9e9c82a0b152cdb66ca3fdc0326",
+      "sha256": "b0f10a772b0c155eb08aa04dc88912bd2fe1b92637b036c20e44ca65a082297c",
       "kind": 14,
-      "path": "Research/ChoralRoot/choralroot-0.27.fwsc"
+      "path": "Research/LatestFirmware/choralroot-0.29.fwsc"
     },
     {
       "id": "ghoulbox",
@@ -142,18 +142,18 @@
       "size": 610086,
       "sha256": "92630ae278d4a0b4233ff2512b62ad9b5dbe976a4c9083046222d9293a8df749",
       "kind": 15,
-      "path": "Research/Ghoulbox/ghoulbox-2.4.fwsc"
+      "path": "Research/LatestFirmware/ghoulbox-2.4.fwsc"
     },
     {
       "id": "jiant",
       "name": "JIANT",
-      "version": "0.9.9-par12",
-      "source": "https://github.com/juanjiant-bit/JIANT/tree/527c7e462a1542cbbde2c2cbf6b4bf151954127d",
-      "url": "https://juanjiant-bit.github.io/JIANT/firmware/felucca-v0.9.9-par12-527c7e4.fwsc",
-      "size": 610280,
-      "sha256": "9738f473f8b5bed4ba6aafb6132f520d03e09683521a32090701fbf4eb6abb3c",
+      "version": "V10.35",
+      "source": "https://github.com/juanjiant-bit/JIANT/tree/5849555",
+      "url": "https://juanjiant-bit.github.io/JIANT/firmware/felucca-V10.35-5849555.fwsc",
+      "size": 667488,
+      "sha256": "d10af10101494ab1be9f793199d78c5ad7b26c2e90993405f45d9865e6e2fb60",
       "kind": 16,
-      "path": "Research/Jiant/jiant-0.9.9-par12.fwsc"
+      "path": "Research/LatestFirmware/jiant-V10.35.fwsc"
     },
     {
       "id": "stock-v16",

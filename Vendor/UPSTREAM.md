@@ -1,7 +1,7 @@
 # fm1-emu core provenance
 
 Source: https://github.com/joakimeriksson/fm1-emu
-Revision: eb0d897cf6e0ebf4c412e2389a113d878ec28dd0 (2026-10-28 retrieval; post-0.3.0 master).
+Revision: 1e97fd74ed5047d69b0514fe85ba1131db698620 (2026-11-02 retrieval; release-0.4.0 branch, version 0.4.0; not yet tagged).
 License: MIT, Joakim Eriksson. See LICENSE-fm1-emu; also included in the app.
 Only fm1-isa, fm1-core and fm1-soc are vendored; no JUCE or firmware banks.
 Cargo metadata uses local workspace versions and the upstream MIT license.

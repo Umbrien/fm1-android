@@ -133,7 +133,9 @@ internal class ProjectSnapshot {
     companion object {
         private const val LEGACY_PACKAGE = "7c9d269d15d1c1a48e0ebada7ffa2c2aa196c19d51056fd3f760d322322b335f"
         private const val PREVIOUS_PACKAGE = "fb69b4311790eb7ec09498be16ae2b71bd681840e221c0d8cfdb26fb5f9a2928"
-        const val PACKAGE = "5444afd3c69c409352e1aed35a56205f13f11e60790de146593c4618a43f3528"
+        private const val PRIOR_PACKAGE = "5444afd3c69c409352e1aed35a56205f13f11e60790de146593c4618a43f3528"
+
+        const val PACKAGE = "5a6a0843c868650dba6718cf85e43e719aec18c3dc5cc803c57c38b382158d4e"
 
         fun digest(bytes: ByteArray) =
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
@@ -141,7 +143,7 @@ internal class ProjectSnapshot {
             }
 
         fun capture(machine: Long, master: Int): ProjectSnapshot {
-            if (NativeEngine.kind(machine) != 2) throw IOException("SLOOP 2.8.3 is required.")
+            if (NativeEngine.kind(machine) != 2) throw IOException("SLOOP 2.8.4 is required.")
             return ProjectSnapshot().also { snapshot ->
                 snapshot.master = master
                 snapshot.parts["flash"] = NativeEngine.flash(machine)
@@ -178,8 +180,8 @@ internal class ProjectSnapshot {
             )
                 throw IOException("The file type does not match its project or backup contents.")
             val snapshot = root.getJSONObject("snapshot")
-            if (snapshot.getInt("version") != 1 || snapshot.getString("packageSHA256") !in setOf(PACKAGE, PREVIOUS_PACKAGE, LEGACY_PACKAGE))
-                throw IOException("This workspace needs the exact SLOOP 2.8.3 release.")
+            if (snapshot.getInt("version") != 1 || snapshot.getString("packageSHA256") !in setOf(PACKAGE, PRIOR_PACKAGE, PREVIOUS_PACKAGE, LEGACY_PACKAGE))
+                throw IOException("This workspace needs the exact SLOOP 2.8.4 release.")
             return ProjectSnapshot().also { result ->
                 result.packageSHA256 = snapshot.getString("packageSHA256")
                 result.master = snapshot.getInt("master")
